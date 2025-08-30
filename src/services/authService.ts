@@ -1,7 +1,7 @@
 // src/services/authService.ts
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 export interface LoginRequest {
   email: string;
@@ -51,7 +51,7 @@ class AuthService {
   }
 
   getCurrentUser(): Promise<User> {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('dental_token');
     return axios.get<User>(`${API_BASE_URL}/api/auth/user`, {
       headers: {
         Authorization: `Bearer ${token}`
@@ -60,16 +60,16 @@ class AuthService {
   }
 
   logout(): void {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    localStorage.removeItem('dental_token');
+    localStorage.removeItem('dental_user');
   }
 
   setToken(token: string): void {
-    localStorage.setItem('token', token);
+    localStorage.setItem('dental_token', token);
   }
 
   getToken(): string | null {
-    return localStorage.getItem('token');
+    return localStorage.getItem('dental_token');
   }
 
   isAuthenticated(): boolean {

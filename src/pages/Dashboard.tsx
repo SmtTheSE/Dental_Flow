@@ -4,9 +4,12 @@ import StatCard from '../components/dashboard/StatCard';
 import AppointmentsList from '../components/dashboard/AppointmentsList';
 import TreatmentQueue from '../components/dashboard/TreatmentQueue';
 import RecentActivity from '../components/dashboard/RecentActivity';
+import { useAuth } from '../context/AuthContext';
 
 const Dashboard: React.FC = () => {
-  const stats = [
+  const { user } = useAuth();
+
+  const stats: React.ComponentProps<typeof StatCard>[] = [
     {
       title: 'Today\'s Appointments',
       value: '12',
@@ -41,13 +44,33 @@ const Dashboard: React.FC = () => {
     }
   ];
 
+  // Determine how to address the user based on their role
+  const getUserTitle = () => {
+    if (!user) return 'Dr.';
+    
+    switch (user.role.toLowerCase()) {
+      case 'dentist':
+        return 'Dr.';
+      case 'hygienist':
+        return 'Hygienist';
+      case 'admin':
+        return 'Admin';
+      default:
+        return '';
+    }
+  };
+
+  const userTitle = getUserTitle();
+
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold mb-2">Good morning, Dr. Johnson</h1>
+            <h1 className="text-2xl font-bold mb-2">
+              Good morning, {user ? `${userTitle} ${user.firstName} ${user.lastName}` : 'Dr. Johnson'}
+            </h1>
             <p className="text-blue-100">You have 12 appointments today and 3 treatment plans to review.</p>
           </div>
           <div className="text-right">

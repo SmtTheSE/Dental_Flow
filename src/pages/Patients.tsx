@@ -1,19 +1,8 @@
-import React, { useState } from 'react';
+// src/pages/Patients.tsx
+import React, { useState, useEffect } from 'react';
 import { Search, Filter, Plus, Phone, Mail, Calendar, User } from 'lucide-react';
 import PatientCard from '../components/patients/PatientCard';
-
-interface Patient {
-  id: number;
-  name: string;
-  age: number;
-  phone: string;
-  email: string;
-  lastVisit: string;
-  nextAppointment: string | null;
-  treatmentStatus: 'active' | 'completed' | 'pending';
-  riskLevel: 'low' | 'medium' | 'high';
-  insuranceProvider: string;
-}
+import patientService, { Patient, CreatePatientRequest } from '../services/patientService';
 
 interface PatientsProps {
   setSelectedPatient: (patient: Patient) => void;
@@ -23,73 +12,53 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showAddPatientModal, setShowAddPatientModal] = useState(false);
-  const [newPatient, setNewPatient] = useState<Omit<Patient, 'id'>>({
-    name: '',
-    age: 0,
+  const [newPatient, setNewPatient] = useState<Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>>({
+    firstName: '',
+    lastName: '',
+    dateOfBirth: new Date().toISOString().split('T')[0],
     phone: '',
     email: '',
-    lastVisit: new Date().toISOString().split('T')[0],
-    nextAppointment: null,
-    treatmentStatus: 'pending',
-    riskLevel: 'low',
-    insuranceProvider: ''
+    address: '',
+    emergencyContact: '',
+    insuranceProvider: '',
+    insurancePolicyNumber: '',
+    medicalHistory: '',
+    riskLevel: 'low'
   });
-  const [patients, setPatients] = useState<Patient[]>([
-    {
-      id: 1,
-      name: 'Emma Wilson',
-      age: 34,
-      phone: '(555) 123-4567',
-      email: 'emma.wilson@email.com',
-      lastVisit: '2024-12-28',
-      nextAppointment: '2025-01-15',
-      treatmentStatus: 'active',
-      riskLevel: 'low',
-      insuranceProvider: 'Delta Dental'
-    },
-    {
-      id: 2,
-      name: 'Michael Brown',
-      age: 42,
-      phone: '(555) 987-6543',
-      email: 'michael.brown@email.com',
-      lastVisit: '2025-01-08',
-      nextAppointment: null,
-      treatmentStatus: 'completed',
-      riskLevel: 'medium',
-      insuranceProvider: 'Aetna'
-    },
-    {
-      id: 3,
-      name: 'Sarah Davis',
-      age: 28,
-      phone: '(555) 456-7890',
-      email: 'sarah.davis@email.com',
-      lastVisit: '2024-12-20',
-      nextAppointment: '2025-01-16',
-      treatmentStatus: 'pending',
-      riskLevel: 'high',
-      insuranceProvider: 'Cigna'
-    },
-    {
-      id: 4,
-      name: 'David Miller',
-      age: 55,
-      phone: '(555) 321-0987',
-      email: 'david.miller@email.com',
-      lastVisit: '2024-11-15',
-      nextAppointment: '2025-01-14',
-      treatmentStatus: 'active',
-      riskLevel: 'medium',
-      insuranceProvider: 'MetLife'
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch patients from the backend
+  useEffect(() => {
+    loadPatients();
+  }, []);
+
+  const loadPatients = async (search?: string, status?: string) => {
+    try {
+      setLoading(true);
+      const data = await patientService.getAllPatients(search, status);
+      setPatients(data);
+      setError(null);
+    } catch (err) {
+      setError('Failed to load patients');
+      console.error('Error loading patients:', err);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
+
+  // Filter patients based on search term and filter status
+  useEffect(() => {
+    loadPatients(searchTerm, filterStatus);
+  }, [searchTerm, filterStatus]);
 
   const filteredPatients = patients.filter(patient => {
-    const matchesSearch = patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = patient.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         patient.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          patient.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          patient.phone.includes(searchTerm);
-    const matchesFilter = filterStatus === 'all' || patient.treatmentStatus === filterStatus;
+    const matchesFilter = filterStatus === 'all' || patient.riskLevel === filterStatus;
     return matchesSearch && matchesFilter;
   });
 
@@ -101,211 +70,270 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
     setShowAddPatientModal(false);
     // Reset form
     setNewPatient({
-      name: '',
-      age: 0,
+      firstName: '',
+      lastName: '',
+      dateOfBirth: new Date().toISOString().split('T')[0],
       phone: '',
       email: '',
-      lastVisit: new Date().toISOString().split('T')[0],
-      nextAppointment: null,
-      treatmentStatus: 'pending',
-      riskLevel: 'low',
-      insuranceProvider: ''
+      address: '',
+      emergencyContact: '',
+      insuranceProvider: '',
+      insurancePolicyNumber: '',
+      medicalHistory: '',
+      riskLevel: 'low'
     });
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setNewPatient({
-      ...newPatient,
-      [name]: name === 'age' ? parseInt(value) || 0 : value
-    });
+    setNewPatient(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Create new patient with incremented ID
-    const patientToAdd: Patient = {
-      ...newPatient,
-      id: Math.max(0, ...patients.map(p => p.id)) + 1
-    };
-    
-    // Add new patient to the list
-    setPatients([...patients, patientToAdd]);
-    
-    // Close modal and reset form
-    handleCloseModal();
+    try {
+      const patientToCreate: CreatePatientRequest = {
+        ...newPatient
+      };
+      
+      const createdPatient = await patientService.createPatient(patientToCreate);
+      setPatients(prev => [createdPatient, ...prev]);
+      handleCloseModal();
+    } catch (err) {
+      console.error('Error creating patient:', err);
+      alert('Failed to create patient');
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 m-4">
+        <p className="text-red-700">{error}</p>
+        <button 
+          onClick={() => loadPatients()}
+          className="mt-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Patients</h1>
-          <p className="text-gray-600 mt-1">Manage patient records and treatment plans</p>
+          <p className="text-gray-600">Manage your patient records and information</p>
         </div>
-        <button 
-          className="mt-4 sm:mt-0 inline-flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        <button
           onClick={handleAddPatient}
+          className="mt-4 md:mt-0 flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add New Patient</span>
+          <Plus className="w-5 h-5" />
+          <span>Add Patient</span>
         </button>
       </div>
 
-      {/* Search and Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
+      {/* Search and Filter */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 md:space-x-4">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search by name, email, or phone..."
+              placeholder="Search patients..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <Filter className="w-5 h-5 text-gray-400" />
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active Treatment</option>
-                <option value="pending">Pending</option>
-                <option value="completed">Completed</option>
-              </select>
-            </div>
+          <div className="flex items-center space-x-2">
+            <Filter className="text-gray-400 w-5 h-5" />
+            <select
+              className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="all">All Risk Levels</option>
+              <option value="low">Low Risk</option>
+              <option value="medium">Medium Risk</option>
+              <option value="high">High Risk</option>
+            </select>
           </div>
         </div>
       </div>
 
-      {/* Patient Grid */}
+      {/* Patient Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPatients.map((patient) => (
-          <PatientCard 
-            key={patient.id} 
-            patient={patient} 
+          <PatientCard
+            key={patient.id}
+            patient={patient}
             onSelect={() => setSelectedPatient(patient)}
           />
         ))}
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-500">Total Patients</p>
-          <p className="text-2xl font-bold text-gray-900">{patients.length}</p>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-500">Active Treatments</p>
-          <p className="text-2xl font-bold text-blue-600">
-            {patients.filter(p => p.treatmentStatus === 'active').length}
-          </p>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-500">High Risk</p>
-          <p className="text-2xl font-bold text-red-600">
-            {patients.filter(p => p.riskLevel === 'high').length}
-          </p>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-500">This Week</p>
-          <p className="text-2xl font-bold text-green-600">8</p>
-        </div>
-      </div>
-
       {/* Add Patient Modal */}
       {showAddPatientModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Add New Patient</h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={newPatient.name}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSubmit}>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                      <input
+                        type="text"
+                        name="firstName"
+                        value={newPatient.firstName}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                      <input
+                        type="text"
+                        name="lastName"
+                        value={newPatient.lastName}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        name="dateOfBirth"
+                        value={newPatient.dateOfBirth}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="text"
+                        name="phone"
+                        value={newPatient.phone}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <input
-                      type="number"
-                      name="age"
-                      value={newPatient.age || ''}
+                      type="email"
+                      name="email"
+                      value={newPatient.email}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       required
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input
-                      type="text"
-                      name="phone"
-                      value={newPatient.phone}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                    <textarea
+                      name="address"
+                      value={newPatient.address}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={newPatient.email}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Insurance Provider</label>
-                    <input
-                      type="text"
-                      name="insuranceProvider"
-                      value={newPatient.insuranceProvider}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      rows={2}
                     />
                   </div>
                   
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact</label>
+                      <input
+                        type="text"
+                        name="emergencyContact"
+                        value={newPatient.emergencyContact}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
+                      <select
+                        name="riskLevel"
+                        value={newPatient.riskLevel}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Insurance Provider</label>
+                      <input
+                        type="text"
+                        name="insuranceProvider"
+                        value={newPatient.insuranceProvider}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Policy Number</label>
+                      <input
+                        type="text"
+                        name="insurancePolicyNumber"
+                        value={newPatient.insurancePolicyNumber}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
-                    <select
-                      name="riskLevel"
-                      value={newPatient.riskLevel}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Medical History</label>
+                    <textarea
+                      name="medicalHistory"
+                      value={newPatient.medicalHistory}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                    </select>
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      rows={3}
+                    />
                   </div>
                 </div>
                 
-                <div className="flex justify-end space-x-3 pt-4">
+                <div className="flex justify-end space-x-3 mt-6">
                   <button
                     type="button"
                     onClick={handleCloseModal}

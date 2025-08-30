@@ -16,6 +16,7 @@ import (
 
 	"dental_backend/internal/database"
 	"dental_backend/internal/handlers"
+	"dental_backend/internal/services"
 )
 
 func main() {
@@ -103,6 +104,7 @@ func setupRoutes(router *gin.Engine) {
 
 		// Patient endpoints
 		api.GET("/patients", handlers.AuthMiddleware(), handlers.GetPatients)
+		api.GET("/patients/stats", handlers.AuthMiddleware(), handlers.GetPatientStats)
 		api.POST("/patients", handlers.AuthMiddleware(), handlers.CreatePatient)
 		api.GET("/patients/:id", handlers.AuthMiddleware(), handlers.GetPatient)
 		api.PUT("/patients/:id", handlers.AuthMiddleware(), handlers.UpdatePatient)
@@ -169,10 +171,23 @@ func corsMiddleware() gin.HandlerFunc {
 
 // Dashboard stats handler
 func getDashboardStats(c *gin.Context) {
+	// Get database connection from the shared database package
+	db := database.GetDB()
+
+	// Create patient service
+	patientService := services.NewPatientService(db)
+
+	// Get patient stats from service
+	patientStats, err := patientService.GetPatientStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve patient statistics"})
+		return
+	}
+
 	// In a real implementation, this would fetch actual dashboard stats
 	c.JSON(http.StatusOK, gin.H{
 		"todayAppointments": 12,
-		"activePatients":    324,
+		"activePatients":    patientStats.TotalPatients,
 		"pendingTreatments": 28,
 		"monthlyRevenue":    48950.00,
 	})

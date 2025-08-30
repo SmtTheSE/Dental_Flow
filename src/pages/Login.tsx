@@ -31,7 +31,7 @@ const Login: React.FC = () => {
 
     try {
       await login(formData.email, formData.password);
-      navigate('/'); // Redirect to dashboard on successful login
+      navigate('/', { replace: true }); // Redirect to root path on successful login
     } catch (error) {
       setErrors(error instanceof Error ? error.message : 'Login failed');
     } finally {

@@ -1,7 +1,7 @@
 // src/App.tsx
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -16,14 +16,34 @@ import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 
 // Main App Layout Component
-const AppLayout: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+const AppLayout: React.FC = () => { 
+  const location = useLocation();
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const { isAuthenticated } = useAuth();
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  // Determine the current page based on the location
+  const getCurrentPage = () => {
+    switch (location.pathname) {
+      case '/patients':
+        return 'patients';
+      case '/appointments':
+        return 'appointments';
+      case '/treatment-planning':
+        return 'treatment-planning';
+      case '/billing':
+        return 'billing';
+      case '/analytics':
+        return 'analytics';
+      default:
+        return 'dashboard';
+    }
+  };
+
+  const [currentPage, setCurrentPage] = useState(getCurrentPage());
+
+  // Update currentPage when location changes
+  React.useEffect(() => {
+    setCurrentPage(getCurrentPage());
+  }, [location]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -32,34 +52,19 @@ const AppLayout: React.FC = () => {
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route index element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/patients" element={<Patients setSelectedPatient={setSelectedPatient} />} />
             <Route path="/patient/:id" element={<PatientDetail patient={selectedPatient} />} />
             <Route path="/appointments" element={<Appointments />} />
             <Route path="/treatment-planning" element={<TreatmentPlanning />} />
             <Route path="/billing" element={<Billing />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>
     </div>
-  );
-};
-
-// Auth Route Wrapper
-const AuthRoutes: React.FC = () => {
-  const { isAuthenticated } = useAuth();
-
-  if (isAuthenticated) {
-    return <Navigate to="/" replace />;
-  }
-
-  return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
   );
 };
 
@@ -68,11 +73,17 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Authentication routes */}
+          {/* Public routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
           {/* Protected routes */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          } />
+          
           <Route path="/*" element={
             <ProtectedRoute>
               <AppLayout />

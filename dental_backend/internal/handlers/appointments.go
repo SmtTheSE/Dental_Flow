@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -23,7 +24,8 @@ func GetTodaysAppointments(c *gin.Context) {
 	// Get today's appointments from service
 	appointments, err := appointmentService.GetTodaysAppointments()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments"})
+		log.Printf("Error retrieving today's appointments: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments", "details": err.Error()})
 		return
 	}
 
@@ -46,7 +48,8 @@ func GetAppointments(c *gin.Context) {
 	// Get appointments from service
 	appointments, err := appointmentService.GetAllAppointments(date, status, patientID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments"})
+		log.Printf("Error retrieving appointments: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments", "details": err.Error()})
 		return
 	}
 
@@ -71,7 +74,8 @@ func GetAppointment(c *gin.Context) {
 	// Get appointment from service
 	appointment, err := appointmentService.GetAppointmentByID(appointmentID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointment"})
+		log.Printf("Error retrieving appointment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointment", "details": err.Error()})
 		return
 	}
 
@@ -105,7 +109,8 @@ func CreateAppointment(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create appointment"})
+		log.Printf("Error creating appointment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create appointment", "details": err.Error()})
 		return
 	}
 
@@ -146,7 +151,8 @@ func UpdateAppointment(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Appointment not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update appointment"})
+		log.Printf("Error updating appointment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update appointment", "details": err.Error()})
 		return
 	}
 
@@ -180,7 +186,8 @@ func DeleteAppointment(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Appointment not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete appointment"})
+		log.Printf("Error deleting appointment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete appointment", "details": err.Error()})
 		return
 	}
 
@@ -198,7 +205,8 @@ func GetAppointmentStats(c *gin.Context) {
 	// Get appointment stats from service
 	stats, err := appointmentService.GetAppointmentStats()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointment statistics"})
+		log.Printf("Error retrieving appointment stats: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointment statistics", "details": err.Error()})
 		return
 	}
 

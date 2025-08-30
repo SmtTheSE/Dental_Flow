@@ -1,36 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Phone, Mail, Calendar, FileText, Pill, CreditCard } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import DentalChart from '../components/patients/DentalChart';
 import TreatmentHistory from '../components/patients/TreatmentHistory';
 import MedicalHistory from '../components/patients/MedicalHistory';
+import patientService, { Patient } from '../services/patientService';
 
-interface Patient {
-  id: number;
-  name: string;
-  age: number;
-  phone: string;
-  email: string;
-  lastVisit: string;
-  nextAppointment: string | null;
-  treatmentStatus: 'active' | 'completed' | 'pending';
-  riskLevel: 'low' | 'medium' | 'high';
-  insuranceProvider: string;
-}
-
-interface PatientDetailProps {
-  patient: Patient | null;
-}
-
-const PatientDetail: React.FC<PatientDetailProps> = ({ patient }) => {
+const PatientDetail: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
 
-  if (!patient) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">Select a patient to view details</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const fetchPatient = async () => {
+      if (!id) {
+        setError('No patient ID provided');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const patientData = await patientService.getPatientById(parseInt(id, 10));
+        setPatient(patientData);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching patient:', err);
+        setError('Failed to load patient details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPatient();
+  }, [id]);
+
+  const calculateAge = (dateOfBirth: string) => {
+    if (!dateOfBirth) return 'N/A';
+    const dob = new Date(dateOfBirth);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    
+    return age;
+  };
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -40,10 +60,45 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patient }) => {
     { id: 'billing', label: 'Billing' }
   ];
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700">{error}</p>
+          <button 
+            onClick={() => navigate('/patients')}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            Back to Patients
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!patient) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">Patient not found</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Back Button */}
-      <button className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors">
+      <button 
+        onClick={() => navigate('/patients')}
+        className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
+      >
         <ArrowLeft className="w-4 h-4" />
         <span>Back to Patients</span>
       </button>
@@ -54,12 +109,12 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patient }) => {
           <div className="flex items-center space-x-6">
             <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center">
               <span className="text-2xl font-bold text-blue-600">
-                {patient.name.split(' ').map(n => n[0]).join('')}
+                {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
               </span>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{patient.name}</h1>
-              <p className="text-gray-600">Age {patient.age} • Patient ID: #{patient.id.toString().padStart(4, '0')}</p>
+              <h1 className="text-2xl font-bold text-gray-900">{patient.firstName} {patient.lastName}</h1>
+              <p className="text-gray-600">Age {calculateAge(patient.dateOfBirth)} • Patient ID: #{patient.id.toString().padStart(4, '0')}</p>
               <div className="flex items-center space-x-4 mt-2">
                 <div className="flex items-center space-x-1 text-sm text-gray-600">
                   <Phone className="w-4 h-4" />
@@ -87,21 +142,20 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patient }) => {
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-500">Last Visit</p>
-          <p className="font-semibold text-gray-900">{new Date(patient.lastVisit).toLocaleDateString()}</p>
+          <p className="text-sm text-gray-500">Date of Birth</p>
+          <p className="font-semibold text-gray-900">
+            {patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : 'N/A'}
+          </p>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-500">Next Appointment</p>
+          <p className="text-sm text-gray-500">Member since</p>
           <p className="font-semibold text-gray-900">
-            {patient.nextAppointment 
-              ? new Date(patient.nextAppointment).toLocaleDateString()
-              : 'Not scheduled'
-            }
+            {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString() : 'N/A'}
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <p className="text-sm text-gray-500">Insurance</p>
-          <p className="font-semibold text-gray-900">{patient.insuranceProvider}</p>
+          <p className="font-semibold text-gray-900">{patient.insuranceProvider || 'Not provided'}</p>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <p className="text-sm text-gray-500">Risk Level</p>
@@ -110,7 +164,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patient }) => {
             patient.riskLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' :
             'bg-green-100 text-green-800'
           }`}>
-            {patient.riskLevel.toUpperCase()}
+            {patient.riskLevel?.toUpperCase() || 'N/A'}
           </span>
         </div>
       </div>
@@ -143,29 +197,24 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patient }) => {
                 <div className="space-y-3">
                   <div>
                     <label className="text-sm font-medium text-gray-500">Emergency Contact</label>
-                    <p className="text-gray-900">Jane Wilson (Sister) - (555) 987-1234</p>
+                    <p className="text-gray-900">{patient.emergencyContact || 'Not provided'}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Date of Birth</label>
-                    <p className="text-gray-900">March 15, 1990</p>
+                    <p className="text-gray-900">
+                      {patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : 'N/A'}
+                    </p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Address</label>
-                    <p className="text-gray-900">123 Main Street, City, State 12345</p>
+                    <p className="text-gray-900">{patient.address || 'Not provided'}</p>
                   </div>
                 </div>
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Treatment</h3>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-medium text-blue-900">Routine Cleaning & Examination</h4>
-                  <p className="text-sm text-blue-700 mt-1">Scheduled for January 15, 2025</p>
-                  <div className="mt-3">
-                    <div className="w-full bg-blue-200 rounded-full h-2">
-                      <div className="bg-blue-600 h-2 rounded-full w-3/4"></div>
-                    </div>
-                    <p className="text-xs text-blue-700 mt-1">75% Complete</p>
-                  </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Medical History</h3>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-gray-700">{patient.medicalHistory || 'No medical history recorded'}</p>
                 </div>
               </div>
             </div>

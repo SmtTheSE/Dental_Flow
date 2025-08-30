@@ -10,7 +10,8 @@ import {
   Settings,
   LogOut
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // Add this import
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext'; // Add this import
 
 interface SidebarProps {
   currentPage: string;
@@ -18,7 +19,8 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
-  const navigate = useNavigate(); // Add this hook
+  const navigate = useNavigate();
+  const { logout } = useAuth(); // Add this hook
   
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -31,7 +33,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
   const handleNavigation = (pageId: string, path: string) => {
     setCurrentPage(pageId);
-    navigate(path); // This will actually navigate to the page
+    navigate(path);
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
 
   return (
@@ -57,7 +64,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
           return (
             <button
               key={item.id}
-              onClick={() => handleNavigation(item.id, item.path)} // Updated this line
+              onClick={() => handleNavigation(item.id, item.path)}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-all duration-200 group ${
                 isActive
                   ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-200'
@@ -81,7 +88,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
           <Settings className="w-5 h-5" />
           <span className="font-medium">Settings</span>
         </button>
-        <button className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all duration-200">
+        <button 
+          onClick={handleLogout}
+          className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all duration-200"
+        >
           <LogOut className="w-5 h-5" />
           <span className="font-medium">Sign Out</span>
         </button>
