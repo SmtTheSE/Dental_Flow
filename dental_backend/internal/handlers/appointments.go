@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetTodaysAppointments retrieves all appointments for today
+// GetTodaysAppointments retrieves all appointments for today for the logged-in dentist
 func GetTodaysAppointments(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
@@ -21,8 +22,15 @@ func GetTodaysAppointments(c *gin.Context) {
 	// Create appointment service
 	appointmentService := services.NewAppointmentService(db)
 
+	// Get logged-in dentist ID from context
+	dentistID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	// Get today's appointments from service
-	appointments, err := appointmentService.GetTodaysAppointments()
+	appointments, err := appointmentService.GetTodaysAppointments(dentistID.(int))
 	if err != nil {
 		log.Printf("Error retrieving today's appointments: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments", "details": err.Error()})
@@ -32,7 +40,7 @@ func GetTodaysAppointments(c *gin.Context) {
 	c.JSON(http.StatusOK, appointments)
 }
 
-// GetAppointments retrieves all appointments with optional filtering
+// GetAppointments retrieves all appointments with optional filtering for the logged-in dentist
 func GetAppointments(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
@@ -40,13 +48,20 @@ func GetAppointments(c *gin.Context) {
 	// Create appointment service
 	appointmentService := services.NewAppointmentService(db)
 
+	// Get logged-in dentist ID from context
+	dentistID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	// Get query parameters for filtering
 	date := c.Query("date")
 	status := c.Query("status")
 	patientID := c.Query("patientId")
 
 	// Get appointments from service
-	appointments, err := appointmentService.GetAllAppointments(date, status, patientID)
+	appointments, err := appointmentService.GetAllAppointments(dentistID.(int), date, status, patientID)
 	if err != nil {
 		log.Printf("Error retrieving appointments: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments", "details": err.Error()})
@@ -56,13 +71,20 @@ func GetAppointments(c *gin.Context) {
 	c.JSON(http.StatusOK, appointments)
 }
 
-// GetAppointment retrieves a single appointment by ID
+// GetAppointment retrieves a single appointment by ID for the logged-in dentist
 func GetAppointment(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
 	// Create appointment service
 	appointmentService := services.NewAppointmentService(db)
+
+	// Get logged-in dentist ID from context
+	dentistID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	id := c.Param("id")
 	appointmentID, err := strconv.Atoi(id)
@@ -72,7 +94,7 @@ func GetAppointment(c *gin.Context) {
 	}
 
 	// Get appointment from service
-	appointment, err := appointmentService.GetAppointmentByID(appointmentID)
+	appointment, err := appointmentService.GetAppointmentByID(appointmentID, dentistID.(int))
 	if err != nil {
 		log.Printf("Error retrieving appointment: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointment", "details": err.Error()})
@@ -87,13 +109,20 @@ func GetAppointment(c *gin.Context) {
 	c.JSON(http.StatusOK, appointment)
 }
 
-// CreateAppointment creates a new appointment
+// CreateAppointment creates a new appointment associated with the logged-in dentist
 func CreateAppointment(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
 	// Create appointment service
 	appointmentService := services.NewAppointmentService(db)
+
+	// Get logged-in dentist ID from context
+	dentistID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	var req models.CreateAppointmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -102,7 +131,7 @@ func CreateAppointment(c *gin.Context) {
 	}
 
 	// Create appointment through service
-	newAppointment, err := appointmentService.CreateAppointment(req)
+	newAppointment, err := appointmentService.CreateAppointment(req, dentistID.(int))
 	if err != nil {
 		// Check if it's a validation error
 		if _, ok := err.(*services.ValidationError); ok {
@@ -117,13 +146,20 @@ func CreateAppointment(c *gin.Context) {
 	c.JSON(http.StatusCreated, newAppointment)
 }
 
-// UpdateAppointment updates an existing appointment
+// UpdateAppointment updates an existing appointment for the logged-in dentist
 func UpdateAppointment(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
 	// Create appointment service
 	appointmentService := services.NewAppointmentService(db)
+
+	// Get logged-in dentist ID from context
+	dentistID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	id := c.Param("id")
 	appointmentID, err := strconv.Atoi(id)
@@ -139,7 +175,7 @@ func UpdateAppointment(c *gin.Context) {
 	}
 
 	// Update appointment through service
-	updatedAppointment, err := appointmentService.UpdateAppointment(appointmentID, req)
+	updatedAppointment, err := appointmentService.UpdateAppointment(appointmentID, req, dentistID.(int))
 	if err != nil {
 		// Check if it's a validation error
 		if _, ok := err.(*services.ValidationError); ok {
@@ -147,7 +183,7 @@ func UpdateAppointment(c *gin.Context) {
 			return
 		}
 		// Check if appointment was not found
-		if err != nil && err.Error() == "sql: no rows in result set" {
+		if err != nil && err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Appointment not found"})
 			return
 		}
@@ -164,13 +200,20 @@ func UpdateAppointment(c *gin.Context) {
 	c.JSON(http.StatusOK, updatedAppointment)
 }
 
-// DeleteAppointment deletes an appointment by ID
+// DeleteAppointment deletes an appointment for the logged-in dentist
 func DeleteAppointment(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
 	// Create appointment service
 	appointmentService := services.NewAppointmentService(db)
+
+	// Get logged-in dentist ID from context
+	dentistID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	id := c.Param("id")
 	appointmentID, err := strconv.Atoi(id)
@@ -180,9 +223,9 @@ func DeleteAppointment(c *gin.Context) {
 	}
 
 	// Delete appointment through service
-	err = appointmentService.DeleteAppointment(appointmentID)
+	err = appointmentService.DeleteAppointment(appointmentID, dentistID.(int))
 	if err != nil {
-		if err != nil && err.Error() == "sql: no rows in result set" {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Appointment not found"})
 			return
 		}
@@ -192,23 +235,4 @@ func DeleteAppointment(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Appointment deleted successfully"})
-}
-
-// GetAppointmentStats retrieves appointment statistics
-func GetAppointmentStats(c *gin.Context) {
-	// Get database connection from the shared database package
-	db := database.GetDB()
-
-	// Create appointment service
-	appointmentService := services.NewAppointmentService(db)
-
-	// Get appointment stats from service
-	stats, err := appointmentService.GetAppointmentStats()
-	if err != nil {
-		log.Printf("Error retrieving appointment stats: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointment statistics", "details": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, stats)
 }

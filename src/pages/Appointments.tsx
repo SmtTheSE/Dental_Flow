@@ -6,6 +6,12 @@ import AppointmentForm from '../components/appointments/AppointmentForm';
 const Appointments: React.FC = () => {
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [showForm, setShowForm] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0); // Used to force refresh of calendar
+
+  const handleAppointmentCreated = () => {
+    // Increment the refresh key to force the calendar to re-fetch appointments
+    setRefreshKey(prev => prev + 1);
+  };
 
   return (
     <div className="space-y-6">
@@ -82,7 +88,8 @@ const Appointments: React.FC = () => {
 
       {/* Main Content */}
       {view === 'calendar' ? (
-        <AppointmentCalendar />
+        // Add key to force re-render when refreshKey changes
+        <AppointmentCalendar key={refreshKey} />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <p className="text-gray-500 text-center py-8">List view coming soon</p>
@@ -93,7 +100,10 @@ const Appointments: React.FC = () => {
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <AppointmentForm onClose={() => setShowForm(false)} />
+            <AppointmentForm 
+              onClose={() => setShowForm(false)} 
+              onAppointmentCreated={handleAppointmentCreated}
+            />
           </div>
         </div>
       )}

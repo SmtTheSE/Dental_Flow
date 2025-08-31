@@ -1,19 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Calendar, Clock, User, FileText } from 'lucide-react';
+import appointmentService, { CreateAppointmentRequest } from '../../services/appointmentService';
+import patientService, { Patient } from '../../services/patientService';
 
 interface AppointmentFormProps {
   onClose: () => void;
+  onAppointmentCreated?: () => void;
 }
 
-const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
+const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmentCreated }) => {
   const [formData, setFormData] = useState({
-    patientName: '',
+    patientId: 0,
     date: '',
-    time: '',
-    duration: '30',
-    type: '',
+    startTime: '',
+    status: 'scheduled' as 'scheduled' | 'completed' | 'cancelled' | 'no-show',
     notes: ''
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [patients, setPatients] = useState<Patient[]>([]);
 
   const appointmentTypes = [
     'Routine Cleaning',
@@ -27,11 +32,88 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
     'Follow-up'
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Fetch patients for selection
+  useEffect(() => {
+    const fetchPatients = async () => {
+      try {
+        const patientList = await patientService.getAllPatients();
+        setPatients(patientList);
+      } catch (err) {
+        console.error('Error fetching patients:', err);
+      }
+    };
+
+    fetchPatients();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    console.log('Appointment scheduled:', formData);
-    onClose();
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Validate required fields
+      if (!formData.patientId || !formData.date || !formData.startTime) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      // Debug: Check token before making request
+      const token = localStorage.getItem('dental_token');
+      console.log('=== DEBUGGING APPOINTMENT CREATION ===');
+      console.log('Token exists:', !!token);
+      console.log('Token value:', token);
+      console.log('Form data:', formData);
+
+      const appointmentData: CreateAppointmentRequest = {
+        patientId: formData.patientId,
+        appointmentDate: formData.date,
+        startTime: formData.startTime,
+        status: formData.status,
+        notes: formData.notes
+      };
+
+      console.log('Appointment data to send:', appointmentData);
+
+      // Test the token by making a simple request first
+      try {
+        console.log('Testing token with getAppointments...');
+        await appointmentService.getAppointments();
+        console.log('Token test successful');
+      } catch (tokenError) {
+        console.error('Token test failed:', tokenError);
+        throw new Error('Authentication token is invalid or expired');
+      }
+
+      console.log('Creating appointment...');
+      const result = await appointmentService.createAppointment(appointmentData);
+      console.log('Appointment created successfully:', result);
+      
+      if (onAppointmentCreated) {
+        onAppointmentCreated();
+      }
+      
+      onClose();
+    } catch (err: any) {
+      console.error('Full error object:', err);
+      console.error('Error response:', err.response);
+      
+      let errorMessage = 'Failed to create appointment. Please try again.';
+      
+      // Check if it's an axios error with response data
+      if (err.response && err.response.data) {
+        if (err.response.data.error) {
+          errorMessage = err.response.data.error;
+        } else if (typeof err.response.data === 'string') {
+          errorMessage = err.response.data;
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -42,10 +124,24 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
         <button 
           onClick={onClose}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          disabled={loading}
         >
           <X className="w-5 h-5 text-gray-500" />
         </button>
       </div>
+
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+          <p className="text-red-700 text-sm">{error}</p>
+          {/* Debug info for auth errors */}
+          {error.includes('Authorization') && (
+            <div className="mt-2 text-xs text-red-600">
+              <p>Token exists: {!!localStorage.getItem('dental_token')}</p>
+              <p>Token length: {localStorage.getItem('dental_token')?.length || 0}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Patient Selection */}
@@ -54,14 +150,20 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
             <User className="w-4 h-4 inline mr-2" />
             Patient
           </label>
-          <input
-            type="text"
-            value={formData.patientName}
-            onChange={(e) => setFormData({...formData, patientName: e.target.value})}
-            placeholder="Search or enter patient name..."
+          <select
+            value={formData.patientId || ''}
+            onChange={(e) => setFormData({...formData, patientId: parseInt(e.target.value) || 0})}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
-          />
+            disabled={loading}
+          >
+            <option value="">Select a patient...</option>
+            {patients.map((patient) => (
+              <option key={patient.id} value={patient.id}>
+                {patient.name} (ID: {patient.id})
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Date and Time */}
@@ -77,18 +179,20 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
               onChange={(e) => setFormData({...formData, date: e.target.value})}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
+              disabled={loading}
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Clock className="w-4 h-4 inline mr-2" />
-              Time
+              Start Time
             </label>
             <select
-              value={formData.time}
-              onChange={(e) => setFormData({...formData, time: e.target.value})}
+              value={formData.startTime}
+              onChange={(e) => setFormData({...formData, startTime: e.target.value})}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
+              disabled={loading}
             >
               <option value="">Select time...</option>
               <option value="08:00">8:00 AM</option>
@@ -110,17 +214,18 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
           </div>
         </div>
 
-        {/* Appointment Type and Duration */}
+        {/* Appointment Type and Status */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Appointment Type
             </label>
             <select
-              value={formData.type}
-              onChange={(e) => setFormData({...formData, type: e.target.value})}
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
+              disabled={loading}
             >
               <option value="">Select type...</option>
               {appointmentTypes.map((type) => (
@@ -130,19 +235,18 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Duration (minutes)
+              Status
             </label>
             <select
-              value={formData.duration}
-              onChange={(e) => setFormData({...formData, duration: e.target.value})}
+              value={formData.status}
+              onChange={(e) => setFormData({...formData, status: e.target.value as any})}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={loading}
             >
-              <option value="15">15 minutes</option>
-              <option value="30">30 minutes</option>
-              <option value="45">45 minutes</option>
-              <option value="60">1 hour</option>
-              <option value="90">1.5 hours</option>
-              <option value="120">2 hours</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="no-show">No Show</option>
             </select>
           </div>
         </div>
@@ -159,6 +263,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
             rows={3}
             placeholder="Additional notes for this appointment..."
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            disabled={loading}
           />
         </div>
 
@@ -168,14 +273,16 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose }) => {
             type="button"
             onClick={onClose}
             className="px-4 py-2 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={loading}
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading}
           >
-            Schedule Appointment
+            {loading ? 'Scheduling...' : 'Schedule Appointment'}
           </button>
         </div>
       </form>

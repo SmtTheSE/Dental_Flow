@@ -110,13 +110,17 @@ func setupRoutes(router *gin.Engine) {
 		api.PUT("/patients/:id", handlers.AuthMiddleware(), handlers.UpdatePatient)
 		api.DELETE("/patients/:id", handlers.AuthMiddleware(), handlers.DeletePatient)
 
-		// Appointment endpoints
-		api.GET("/appointments/today", handlers.AuthMiddleware(), handlers.GetTodaysAppointments)
-		api.GET("/appointments", handlers.AuthMiddleware(), handlers.GetAppointments)
-		api.GET("/appointments/:id", handlers.AuthMiddleware(), handlers.GetAppointment)
-		api.POST("/appointments", handlers.AuthMiddleware(), handlers.CreateAppointment)
-		api.PUT("/appointments/:id", handlers.AuthMiddleware(), handlers.UpdateAppointment)
-		api.DELETE("/appointments/:id", handlers.AuthMiddleware(), handlers.DeleteAppointment)
+		// Appointment endpoints (accessible by dentists and staff)
+		appointmentRoutes := api.Group("/appointments")
+		appointmentRoutes.Use(handlers.AuthMiddleware())
+		{
+			appointmentRoutes.GET("/today", handlers.GetTodaysAppointments)
+			appointmentRoutes.GET("", handlers.GetAppointments)
+			appointmentRoutes.GET("/:id", handlers.GetAppointment)
+			appointmentRoutes.POST("", handlers.CreateAppointment)
+			appointmentRoutes.PUT("/:id", handlers.UpdateAppointment)
+			appointmentRoutes.DELETE("/:id", handlers.DeleteAppointment)
+		}
 
 		// Treatment endpoints
 		api.GET("/treatments/queue", handlers.AuthMiddleware(), handlers.GetTreatmentQueue)
