@@ -8,147 +8,41 @@ import (
 	"time"
 
 	"dental_backend/internal/database"
+	"dental_backend/internal/models"
+	"dental_backend/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
-
-// Invoice represents an invoice in the system
-type Invoice struct {
-	ID            int       `json:"id"`
-	PatientID     int       `json:"patientId"`
-	PatientName   string    `json:"patientName"`
-	Amount        float64   `json:"amount"`
-	Status        string    `json:"status"`
-	DueDate       string    `json:"dueDate"`
-	IssuedDate    string    `json:"issuedDate"`
-	PaymentMethod string    `json:"paymentMethod"`
-	Notes         string    `json:"notes"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-}
-
-// InsuranceClaim represents an insurance claim in the system
-type InsuranceClaim struct {
-	ID             int       `json:"id"`
-	PatientID      int       `json:"patientId"`
-	TreatmentID    *int      `json:"treatmentId"` // nullable
-	PatientName    string    `json:"patientName"`
-	TreatmentName  *string   `json:"treatmentName"` // nullable
-	ClaimAmount    float64   `json:"claimAmount"`
-	Status         string    `json:"status"`
-	SubmissionDate string    `json:"submissionDate"`
-	ApprovalDate   *string   `json:"approvalDate"` // nullable
-	Notes          string    `json:"notes"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
-}
-
-// CreateInvoiceRequest represents the request payload for creating an invoice
-type CreateInvoiceRequest struct {
-	PatientID     int     `json:"patientId" binding:"required"`
-	Amount        float64 `json:"amount" binding:"required,min=0"`
-	Status        string  `json:"status" binding:"oneof=pending paid overdue"`
-	DueDate       string  `json:"dueDate" binding:"required"`
-	IssuedDate    string  `json:"issuedDate"`
-	PaymentMethod string  `json:"paymentMethod"`
-	Notes         string  `json:"notes"`
-}
-
-// UpdateInvoiceRequest represents the request payload for updating an invoice
-type UpdateInvoiceRequest struct {
-	PatientID     int     `json:"patientId"`
-	Amount        float64 `json:"amount" binding:"min=0"`
-	Status        string  `json:"status" binding:"oneof=pending paid overdue"`
-	DueDate       string  `json:"dueDate"`
-	IssuedDate    string  `json:"issuedDate"`
-	PaymentMethod string  `json:"paymentMethod"`
-	Notes         string  `json:"notes"`
-}
-
-// CreateInsuranceClaimRequest represents the request payload for creating an insurance claim
-type CreateInsuranceClaimRequest struct {
-	PatientID      int     `json:"patientId" binding:"required"`
-	TreatmentID    *int    `json:"treatmentId"`
-	ClaimAmount    float64 `json:"claimAmount" binding:"required,min=0"`
-	Status         string  `json:"status" binding:"oneof=submitted approved denied"`
-	SubmissionDate string  `json:"submissionDate"`
-	ApprovalDate   *string `json:"approvalDate"`
-	Notes          string  `json:"notes"`
-}
-
-// UpdateInsuranceClaimRequest represents the request payload for updating an insurance claim
-type UpdateInsuranceClaimRequest struct {
-	PatientID      int     `json:"patientId"`
-	TreatmentID    *int    `json:"treatmentId"`
-	ClaimAmount    float64 `json:"claimAmount" binding:"min=0"`
-	Status         string  `json:"status" binding:"oneof=submitted approved denied"`
-	SubmissionDate string  `json:"submissionDate"`
-	ApprovalDate   *string `json:"approvalDate"`
-	Notes          string  `json:"notes"`
-}
-
-// BillingStats represents billing statistics for the dashboard
-type BillingStats struct {
-	MonthlyRevenue  float64 `json:"monthlyRevenue"`
-	PendingPayments float64 `json:"pendingPayments"`
-	InsuranceClaims float64 `json:"insuranceClaims"`
-	Collections     float64 `json:"collections"`
-}
 
 // GetBillingStats retrieves billing statistics for the dashboard
 func GetBillingStats(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
-	var stats BillingStats
+	// Create billing service
+	billingService := services.NewBillingService(db)
 
-	// Get monthly revenue (paid invoices this month)
-	err := db.QueryRow(`
-		SELECT COALESCE(SUM(amount), 0) 
-		FROM invoices 
-		WHERE status = 'paid' 
-		AND EXTRACT(YEAR FROM issued_date) = EXTRACT(YEAR FROM CURRENT_DATE)
-		AND EXTRACT(MONTH FROM issued_date) = EXTRACT(MONTH FROM CURRENT_DATE)`).Scan(&stats.MonthlyRevenue)
-
+	// Get billing stats from service
+	stats, err := billingService.GetBillingStats()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve monthly revenue"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve billing statistics"})
 		return
 	}
 
-	// Get pending payments (pending invoices)
-	err = db.QueryRow(`
-		SELECT COALESCE(SUM(amount), 0) 
-		FROM invoices 
-		WHERE status = 'pending'`).Scan(&stats.PendingPayments)
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve pending payments"})
-		return
+	// Convert service model to handler response format
+	response := struct {
+		MonthlyRevenue  float64 `json:"monthlyRevenue"`
+		PendingPayments float64 `json:"pendingPayments"`
+		InsuranceClaims float64 `json:"insuranceClaims"`
+		Collections     float64 `json:"collections"`
+	}{
+		MonthlyRevenue:  stats.MonthlyRevenue,
+		PendingPayments: stats.PendingPayments,
+		InsuranceClaims: stats.InsuranceClaims,
+		Collections:     stats.Collections,
 	}
 
-	// Get insurance claims amount (submitted claims)
-	err = db.QueryRow(`
-		SELECT COALESCE(SUM(claim_amount), 0) 
-		FROM insurance_claims 
-		WHERE status = 'submitted'`).Scan(&stats.InsuranceClaims)
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve insurance claims"})
-		return
-	}
-
-	// Get collections (paid invoices)
-	err = db.QueryRow(`
-		SELECT COALESCE(SUM(amount), 0) 
-		FROM invoices 
-		WHERE status = 'paid'`).Scan(&stats.Collections)
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve collections"})
-		return
-	}
-
-	c.JSON(http.StatusOK, stats)
+	c.JSON(http.StatusOK, response)
 }
 
 // GetInvoices retrieves all invoices with optional filtering
@@ -156,72 +50,78 @@ func GetInvoices(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
 	// Get query parameters for filtering
 	status := c.Query("status")
 	patientID := c.Query("patientId")
 
-	// Build query with filters
-	query := `
-		SELECT i.id, i.patient_id, p.name as patient_name, i.amount, i.status, 
-		       i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
-		FROM invoices i
-		JOIN patients p ON i.patient_id = p.id
-		WHERE 1=1`
-
-	args := []interface{}{}
-	argCount := 1
-
-	if status != "" {
-		query += " AND i.status = $" + strconv.Itoa(argCount)
-		args = append(args, status)
-		argCount++
-	}
-
+	// Get invoices from service
+	var patientIDFilter string
 	if patientID != "" {
-		pid, err := strconv.Atoi(patientID)
-		if err == nil {
-			query += " AND i.patient_id = $" + strconv.Itoa(argCount)
-			args = append(args, pid)
-			argCount++
-		}
+		patientIDFilter = patientID
 	}
 
-	query += " ORDER BY i.created_at DESC"
-
-	rows, err := db.Query(query, args...)
+	invoices, err := billingService.GetAllInvoices(status, patientIDFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve invoices"})
 		return
 	}
-	defer rows.Close()
 
-	var invoices []Invoice
-	for rows.Next() {
-		var i Invoice
-		err := rows.Scan(
-			&i.ID, &i.PatientID, &i.PatientName, &i.Amount, &i.Status,
-			&i.DueDate, &i.IssuedDate, &i.PaymentMethod, &i.Notes,
-			&i.CreatedAt, &i.UpdatedAt,
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan invoice data"})
-			return
+	// Convert service models to handler response format
+	response := make([]struct {
+		ID            int       `json:"id"`
+		PatientID     int       `json:"patientId"`
+		PatientName   string    `json:"patientName"`
+		Amount        float64   `json:"amount"`
+		Status        string    `json:"status"`
+		DueDate       string    `json:"dueDate"`
+		IssuedDate    string    `json:"issuedDate"`
+		PaymentMethod string    `json:"paymentMethod"`
+		Notes         string    `json:"notes"`
+		CreatedAt     time.Time `json:"createdAt"`
+		UpdatedAt     time.Time `json:"updatedAt"`
+	}, len(invoices))
+
+	for i, invoice := range invoices {
+		response[i] = struct {
+			ID            int       `json:"id"`
+			PatientID     int       `json:"patientId"`
+			PatientName   string    `json:"patientName"`
+			Amount        float64   `json:"amount"`
+			Status        string    `json:"status"`
+			DueDate       string    `json:"dueDate"`
+			IssuedDate    string    `json:"issuedDate"`
+			PaymentMethod string    `json:"paymentMethod"`
+			Notes         string    `json:"notes"`
+			CreatedAt     time.Time `json:"createdAt"`
+			UpdatedAt     time.Time `json:"updatedAt"`
+		}{
+			ID:            invoice.ID,
+			PatientID:     invoice.PatientID,
+			PatientName:   invoice.PatientName,
+			Amount:        invoice.Amount,
+			Status:        invoice.Status,
+			DueDate:       invoice.DueDate,
+			IssuedDate:    invoice.IssuedDate,
+			PaymentMethod: invoice.PaymentMethod,
+			Notes:         invoice.Notes,
+			CreatedAt:     invoice.CreatedAt,
+			UpdatedAt:     invoice.UpdatedAt,
 		}
-		invoices = append(invoices, i)
 	}
 
-	if err = rows.Err(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error iterating invoices"})
-		return
-	}
-
-	c.JSON(http.StatusOK, invoices)
+	c.JSON(http.StatusOK, response)
 }
 
 // GetInvoice retrieves a single invoice by ID
 func GetInvoice(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
+
+	// Create billing service
+	billingService := services.NewBillingService(db)
 
 	id := c.Param("id")
 	invoiceID, err := strconv.Atoi(id)
@@ -230,20 +130,10 @@ func GetInvoice(c *gin.Context) {
 		return
 	}
 
-	var i Invoice
-	err = db.QueryRow(`
-		SELECT i.id, i.patient_id, p.name as patient_name, i.amount, i.status, 
-		       i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
-		FROM invoices i
-		JOIN patients p ON i.patient_id = p.id
-		WHERE i.id = $1`, invoiceID).Scan(
-		&i.ID, &i.PatientID, &i.PatientName, &i.Amount, &i.Status,
-		&i.DueDate, &i.IssuedDate, &i.PaymentMethod, &i.Notes,
-		&i.CreatedAt, &i.UpdatedAt,
-	)
-
+	// Get invoice from service
+	invoice, err := billingService.GetInvoiceByID(invoiceID)
 	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
 			return
 		}
@@ -251,7 +141,39 @@ func GetInvoice(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, i)
+	if invoice == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
+		return
+	}
+
+	// Convert service model to handler response format
+	response := struct {
+		ID            int       `json:"id"`
+		PatientID     int       `json:"patientId"`
+		PatientName   string    `json:"patientName"`
+		Amount        float64   `json:"amount"`
+		Status        string    `json:"status"`
+		DueDate       string    `json:"dueDate"`
+		IssuedDate    string    `json:"issuedDate"`
+		PaymentMethod string    `json:"paymentMethod"`
+		Notes         string    `json:"notes"`
+		CreatedAt     time.Time `json:"createdAt"`
+		UpdatedAt     time.Time `json:"updatedAt"`
+	}{
+		ID:            invoice.ID,
+		PatientID:     invoice.PatientID,
+		PatientName:   invoice.PatientName,
+		Amount:        invoice.Amount,
+		Status:        invoice.Status,
+		DueDate:       invoice.DueDate,
+		IssuedDate:    invoice.IssuedDate,
+		PaymentMethod: invoice.PaymentMethod,
+		Notes:         invoice.Notes,
+		CreatedAt:     invoice.CreatedAt,
+		UpdatedAt:     invoice.UpdatedAt,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // CreateInvoice creates a new invoice
@@ -259,7 +181,10 @@ func CreateInvoice(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
-	var req CreateInvoiceRequest
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
+	var req models.CreateInvoiceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -274,27 +199,41 @@ func CreateInvoice(c *gin.Context) {
 		req.IssuedDate = time.Now().Format("2006-01-02")
 	}
 
-	var newInvoice Invoice
-	err := db.QueryRow(`
-		INSERT INTO invoices (
-			patient_id, amount, status, due_date, issued_date, payment_method, notes, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-		RETURNING id, patient_id, (SELECT name FROM patients WHERE id = $1), 
-		          amount, status, due_date, issued_date, payment_method, notes, created_at, updated_at`,
-		req.PatientID, req.Amount, req.Status, req.DueDate, req.IssuedDate, req.PaymentMethod, req.Notes,
-	).Scan(
-		&newInvoice.ID, &newInvoice.PatientID, &newInvoice.PatientName,
-		&newInvoice.Amount, &newInvoice.Status, &newInvoice.DueDate,
-		&newInvoice.IssuedDate, &newInvoice.PaymentMethod, &newInvoice.Notes,
-		&newInvoice.CreatedAt, &newInvoice.UpdatedAt,
-	)
-
+	// Create invoice through service
+	newInvoice, err := billingService.CreateInvoice(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create invoice"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, newInvoice)
+	// Convert service model to handler response format
+	response := struct {
+		ID            int       `json:"id"`
+		PatientID     int       `json:"patientId"`
+		PatientName   string    `json:"patientName"`
+		Amount        float64   `json:"amount"`
+		Status        string    `json:"status"`
+		DueDate       string    `json:"dueDate"`
+		IssuedDate    string    `json:"issuedDate"`
+		PaymentMethod string    `json:"paymentMethod"`
+		Notes         string    `json:"notes"`
+		CreatedAt     time.Time `json:"createdAt"`
+		UpdatedAt     time.Time `json:"updatedAt"`
+	}{
+		ID:            newInvoice.ID,
+		PatientID:     newInvoice.PatientID,
+		PatientName:   newInvoice.PatientName,
+		Amount:        newInvoice.Amount,
+		Status:        newInvoice.Status,
+		DueDate:       newInvoice.DueDate,
+		IssuedDate:    newInvoice.IssuedDate,
+		PaymentMethod: newInvoice.PaymentMethod,
+		Notes:         newInvoice.Notes,
+		CreatedAt:     newInvoice.CreatedAt,
+		UpdatedAt:     newInvoice.UpdatedAt,
+	}
+
+	c.JSON(http.StatusCreated, response)
 }
 
 // UpdateInvoice updates an existing invoice
@@ -302,6 +241,9 @@ func UpdateInvoice(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
 	id := c.Param("id")
 	invoiceID, err := strconv.Atoi(id)
 	if err != nil {
@@ -309,102 +251,51 @@ func UpdateInvoice(c *gin.Context) {
 		return
 	}
 
-	var req UpdateInvoiceRequest
+	var req models.UpdateInvoiceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Build the update query dynamically based on provided fields
-	query := "UPDATE invoices SET updated_at = NOW()"
-	args := []interface{}{invoiceID}
-	argCount := 2
-
-	if req.PatientID != 0 {
-		query += ", patient_id = $" + strconv.Itoa(argCount)
-		args = append(args, req.PatientID)
-		argCount++
-	}
-
-	if req.Amount != 0 {
-		query += ", amount = $" + strconv.Itoa(argCount)
-		args = append(args, req.Amount)
-		argCount++
-	}
-
-	if req.Status != "" {
-		query += ", status = $" + strconv.Itoa(argCount)
-		args = append(args, req.Status)
-		argCount++
-	}
-
-	if req.DueDate != "" {
-		query += ", due_date = $" + strconv.Itoa(argCount)
-		args = append(args, req.DueDate)
-		argCount++
-	}
-
-	if req.IssuedDate != "" {
-		query += ", issued_date = $" + strconv.Itoa(argCount)
-		args = append(args, req.IssuedDate)
-		argCount++
-	}
-
-	if req.PaymentMethod != "" {
-		query += ", payment_method = $" + strconv.Itoa(argCount)
-		args = append(args, req.PaymentMethod)
-		argCount++
-	}
-
-	if req.Notes != "" {
-		query += ", notes = $" + strconv.Itoa(argCount)
-		args = append(args, req.Notes)
-		argCount++
-	}
-
-	query += " WHERE id = $1"
-
-	result, err := db.Exec(query, args...)
+	// Update invoice through service
+	updatedInvoice, err := billingService.UpdateInvoice(invoiceID, req)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update invoice"})
 		return
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get rows affected"})
-		return
+	// Convert service model to handler response format
+	response := struct {
+		ID            int       `json:"id"`
+		PatientID     int       `json:"patientId"`
+		PatientName   string    `json:"patientName"`
+		Amount        float64   `json:"amount"`
+		Status        string    `json:"status"`
+		DueDate       string    `json:"dueDate"`
+		IssuedDate    string    `json:"issuedDate"`
+		PaymentMethod string    `json:"paymentMethod"`
+		Notes         string    `json:"notes"`
+		CreatedAt     time.Time `json:"createdAt"`
+		UpdatedAt     time.Time `json:"updatedAt"`
+	}{
+		ID:            updatedInvoice.ID,
+		PatientID:     updatedInvoice.PatientID,
+		PatientName:   updatedInvoice.PatientName,
+		Amount:        updatedInvoice.Amount,
+		Status:        updatedInvoice.Status,
+		DueDate:       updatedInvoice.DueDate,
+		IssuedDate:    updatedInvoice.IssuedDate,
+		PaymentMethod: updatedInvoice.PaymentMethod,
+		Notes:         updatedInvoice.Notes,
+		CreatedAt:     updatedInvoice.CreatedAt,
+		UpdatedAt:     updatedInvoice.UpdatedAt,
 	}
 
-	if rowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
-		return
-	}
-
-	// Retrieve the updated invoice
-	var updatedInvoice Invoice
-	err = db.QueryRow(`
-		SELECT i.id, i.patient_id, p.name as patient_name, i.amount, i.status, 
-		       i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
-		FROM invoices i
-		JOIN patients p ON i.patient_id = p.id
-		WHERE i.id = $1`, invoiceID).Scan(
-		&updatedInvoice.ID, &updatedInvoice.PatientID, &updatedInvoice.PatientName,
-		&updatedInvoice.Amount, &updatedInvoice.Status, &updatedInvoice.DueDate,
-		&updatedInvoice.IssuedDate, &updatedInvoice.PaymentMethod, &updatedInvoice.Notes,
-		&updatedInvoice.CreatedAt, &updatedInvoice.UpdatedAt,
-	)
-
-	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve updated invoice"})
-		return
-	}
-
-	c.JSON(http.StatusOK, updatedInvoice)
+	c.JSON(http.StatusOK, response)
 }
 
 // DeleteInvoice deletes an invoice by ID
@@ -412,6 +303,9 @@ func DeleteInvoice(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
 	id := c.Param("id")
 	invoiceID, err := strconv.Atoi(id)
 	if err != nil {
@@ -419,20 +313,14 @@ func DeleteInvoice(c *gin.Context) {
 		return
 	}
 
-	result, err := db.Exec("DELETE FROM invoices WHERE id = $1", invoiceID)
+	// Delete invoice through service
+	err = billingService.DeleteInvoice(invoiceID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete invoice"})
-		return
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get rows affected"})
-		return
-	}
-
-	if rowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
 		return
 	}
 
@@ -444,94 +332,81 @@ func GetInsuranceClaims(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
 	// Get query parameters for filtering
 	status := c.Query("status")
 	patientID := c.Query("patientId")
 
-	// Build query with filters
-	query := `
-		SELECT ic.id, ic.patient_id, p.name as patient_name, ic.treatment_id, 
-		       t.name as treatment_name, ic.claim_amount, ic.status, 
-		       ic.submission_date, ic.approval_date, ic.notes, ic.created_at, ic.updated_at
-		FROM insurance_claims ic
-		JOIN patients p ON ic.patient_id = p.id
-		LEFT JOIN treatments t ON ic.treatment_id = t.id
-		WHERE 1=1`
-
-	args := []interface{}{}
-	argCount := 1
-
-	if status != "" {
-		query += " AND ic.status = $" + strconv.Itoa(argCount)
-		args = append(args, status)
-		argCount++
-	}
-
+	// Get insurance claims from service
+	var patientIDFilter string
 	if patientID != "" {
-		pid, err := strconv.Atoi(patientID)
-		if err == nil {
-			query += " AND ic.patient_id = $" + strconv.Itoa(argCount)
-			args = append(args, pid)
-			argCount++
-		}
+		patientIDFilter = patientID
 	}
 
-	query += " ORDER BY ic.created_at DESC"
-
-	rows, err := db.Query(query, args...)
+	claims, err := billingService.GetAllInsuranceClaims(status, patientIDFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve insurance claims"})
 		return
 	}
-	defer rows.Close()
 
-	var claims []InsuranceClaim
-	for rows.Next() {
-		var ic InsuranceClaim
-		var treatmentID sql.NullInt64
-		var treatmentName sql.NullString
-		var approvalDate sql.NullString
+	// Convert service models to handler response format
+	response := make([]struct {
+		ID             int       `json:"id"`
+		PatientID      int       `json:"patientId"`
+		TreatmentID    *int      `json:"treatmentId"` // nullable
+		PatientName    string    `json:"patientName"`
+		TreatmentName  *string   `json:"treatmentName"` // nullable
+		ClaimAmount    float64   `json:"claimAmount"`
+		Status         string    `json:"status"`
+		SubmissionDate string    `json:"submissionDate"`
+		ApprovalDate   *string   `json:"approvalDate"` // nullable
+		Notes          string    `json:"notes"`
+		CreatedAt      time.Time `json:"createdAt"`
+		UpdatedAt      time.Time `json:"updatedAt"`
+	}, len(claims))
 
-		err := rows.Scan(
-			&ic.ID, &ic.PatientID, &ic.PatientName, &treatmentID,
-			&treatmentName, &ic.ClaimAmount, &ic.Status,
-			&ic.SubmissionDate, &approvalDate, &ic.Notes,
-			&ic.CreatedAt, &ic.UpdatedAt,
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan insurance claim data"})
-			return
+	for i, claim := range claims {
+		response[i] = struct {
+			ID             int       `json:"id"`
+			PatientID      int       `json:"patientId"`
+			TreatmentID    *int      `json:"treatmentId"`
+			PatientName    string    `json:"patientName"`
+			TreatmentName  *string   `json:"treatmentName"`
+			ClaimAmount    float64   `json:"claimAmount"`
+			Status         string    `json:"status"`
+			SubmissionDate string    `json:"submissionDate"`
+			ApprovalDate   *string   `json:"approvalDate"`
+			Notes          string    `json:"notes"`
+			CreatedAt      time.Time `json:"createdAt"`
+			UpdatedAt      time.Time `json:"updatedAt"`
+		}{
+			ID:             claim.ID,
+			PatientID:      claim.PatientID,
+			TreatmentID:    claim.TreatmentID,
+			PatientName:    claim.PatientName,
+			TreatmentName:  claim.TreatmentName,
+			ClaimAmount:    claim.ClaimAmount,
+			Status:         claim.Status,
+			SubmissionDate: claim.SubmissionDate,
+			ApprovalDate:   claim.ApprovalDate,
+			Notes:          claim.Notes,
+			CreatedAt:      claim.CreatedAt,
+			UpdatedAt:      claim.UpdatedAt,
 		}
-
-		// Handle nullable fields
-		if treatmentID.Valid {
-			treatmentIDValue := int(treatmentID.Int64)
-			ic.TreatmentID = &treatmentIDValue
-		}
-
-		if treatmentName.Valid {
-			ic.TreatmentName = &treatmentName.String
-		}
-
-		if approvalDate.Valid {
-			ic.ApprovalDate = &approvalDate.String
-		}
-
-		claims = append(claims, ic)
 	}
 
-	if err = rows.Err(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error iterating insurance claims"})
-		return
-	}
-
-	c.JSON(http.StatusOK, claims)
+	c.JSON(http.StatusOK, response)
 }
 
 // GetInsuranceClaim retrieves a single insurance claim by ID
 func GetInsuranceClaim(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
+
+	// Create billing service
+	billingService := services.NewBillingService(db)
 
 	id := c.Param("id")
 	claimID, err := strconv.Atoi(id)
@@ -540,27 +415,10 @@ func GetInsuranceClaim(c *gin.Context) {
 		return
 	}
 
-	var ic InsuranceClaim
-	var treatmentID sql.NullInt64
-	var treatmentName sql.NullString
-	var approvalDate sql.NullString
-
-	err = db.QueryRow(`
-		SELECT ic.id, ic.patient_id, p.name as patient_name, ic.treatment_id, 
-		       t.name as treatment_name, ic.claim_amount, ic.status, 
-		       ic.submission_date, ic.approval_date, ic.notes, ic.created_at, ic.updated_at
-		FROM insurance_claims ic
-		JOIN patients p ON ic.patient_id = p.id
-		LEFT JOIN treatments t ON ic.treatment_id = t.id
-		WHERE ic.id = $1`, claimID).Scan(
-		&ic.ID, &ic.PatientID, &ic.PatientName, &treatmentID,
-		&treatmentName, &ic.ClaimAmount, &ic.Status,
-		&ic.SubmissionDate, &approvalDate, &ic.Notes,
-		&ic.CreatedAt, &ic.UpdatedAt,
-	)
-
+	// Get insurance claim from service
+	claim, err := billingService.GetInsuranceClaimByID(claimID)
 	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Insurance claim not found"})
 			return
 		}
@@ -568,21 +426,41 @@ func GetInsuranceClaim(c *gin.Context) {
 		return
 	}
 
-	// Handle nullable fields
-	if treatmentID.Valid {
-		treatmentIDValue := int(treatmentID.Int64)
-		ic.TreatmentID = &treatmentIDValue
+	if claim == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Insurance claim not found"})
+		return
 	}
 
-	if treatmentName.Valid {
-		ic.TreatmentName = &treatmentName.String
+	// Convert service model to handler response format
+	response := struct {
+		ID             int       `json:"id"`
+		PatientID      int       `json:"patientId"`
+		TreatmentID    *int      `json:"treatmentId"` // nullable
+		PatientName    string    `json:"patientName"`
+		TreatmentName  *string   `json:"treatmentName"` // nullable
+		ClaimAmount    float64   `json:"claimAmount"`
+		Status         string    `json:"status"`
+		SubmissionDate string    `json:"submissionDate"`
+		ApprovalDate   *string   `json:"approvalDate"` // nullable
+		Notes          string    `json:"notes"`
+		CreatedAt      time.Time `json:"createdAt"`
+		UpdatedAt      time.Time `json:"updatedAt"`
+	}{
+		ID:             claim.ID,
+		PatientID:      claim.PatientID,
+		TreatmentID:    claim.TreatmentID,
+		PatientName:    claim.PatientName,
+		TreatmentName:  claim.TreatmentName,
+		ClaimAmount:    claim.ClaimAmount,
+		Status:         claim.Status,
+		SubmissionDate: claim.SubmissionDate,
+		ApprovalDate:   claim.ApprovalDate,
+		Notes:          claim.Notes,
+		CreatedAt:      claim.CreatedAt,
+		UpdatedAt:      claim.UpdatedAt,
 	}
 
-	if approvalDate.Valid {
-		ic.ApprovalDate = &approvalDate.String
-	}
-
-	c.JSON(http.StatusOK, ic)
+	c.JSON(http.StatusOK, response)
 }
 
 // CreateInsuranceClaim creates a new insurance claim
@@ -590,7 +468,10 @@ func CreateInsuranceClaim(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
-	var req CreateInsuranceClaimRequest
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
+	var req models.CreateInsuranceClaimRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -605,51 +486,43 @@ func CreateInsuranceClaim(c *gin.Context) {
 		req.SubmissionDate = time.Now().Format("2006-01-02")
 	}
 
-	var newClaim InsuranceClaim
-	var treatmentID sql.NullInt64
-	var approvalDate sql.NullString
-
-	if req.TreatmentID != nil {
-		treatmentID.Valid = true
-		treatmentID.Int64 = int64(*req.TreatmentID)
-	}
-
-	if req.ApprovalDate != nil {
-		approvalDate.Valid = true
-		approvalDate.String = *req.ApprovalDate
-	}
-
-	err := db.QueryRow(`
-		INSERT INTO insurance_claims (
-			patient_id, treatment_id, claim_amount, status, submission_date, approval_date, notes, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-		RETURNING id, patient_id, (SELECT name FROM patients WHERE id = $1), 
-		          treatment_id, (SELECT name FROM treatments WHERE id = $2), 
-		          claim_amount, status, submission_date, approval_date, notes, created_at, updated_at`,
-		req.PatientID, treatmentID, req.ClaimAmount, req.Status, req.SubmissionDate, approvalDate, req.Notes,
-	).Scan(
-		&newClaim.ID, &newClaim.PatientID, &newClaim.PatientName,
-		&treatmentID, &newClaim.TreatmentName,
-		&newClaim.ClaimAmount, &newClaim.Status, &newClaim.SubmissionDate,
-		&approvalDate, &newClaim.Notes, &newClaim.CreatedAt, &newClaim.UpdatedAt,
-	)
-
+	// Create insurance claim through service
+	newClaim, err := billingService.CreateInsuranceClaim(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create insurance claim"})
 		return
 	}
 
-	// Handle nullable fields
-	if treatmentID.Valid {
-		treatmentIDValue := int(treatmentID.Int64)
-		newClaim.TreatmentID = &treatmentIDValue
+	// Convert service model to handler response format
+	response := struct {
+		ID             int       `json:"id"`
+		PatientID      int       `json:"patientId"`
+		TreatmentID    *int      `json:"treatmentId"` // nullable
+		PatientName    string    `json:"patientName"`
+		TreatmentName  *string   `json:"treatmentName"` // nullable
+		ClaimAmount    float64   `json:"claimAmount"`
+		Status         string    `json:"status"`
+		SubmissionDate string    `json:"submissionDate"`
+		ApprovalDate   *string   `json:"approvalDate"` // nullable
+		Notes          string    `json:"notes"`
+		CreatedAt      time.Time `json:"createdAt"`
+		UpdatedAt      time.Time `json:"updatedAt"`
+	}{
+		ID:             newClaim.ID,
+		PatientID:      newClaim.PatientID,
+		TreatmentID:    newClaim.TreatmentID,
+		PatientName:    newClaim.PatientName,
+		TreatmentName:  newClaim.TreatmentName,
+		ClaimAmount:    newClaim.ClaimAmount,
+		Status:         newClaim.Status,
+		SubmissionDate: newClaim.SubmissionDate,
+		ApprovalDate:   newClaim.ApprovalDate,
+		Notes:          newClaim.Notes,
+		CreatedAt:      newClaim.CreatedAt,
+		UpdatedAt:      newClaim.UpdatedAt,
 	}
 
-	if approvalDate.Valid {
-		newClaim.ApprovalDate = &approvalDate.String
-	}
-
-	c.JSON(http.StatusCreated, newClaim)
+	c.JSON(http.StatusCreated, response)
 }
 
 // UpdateInsuranceClaim updates an existing insurance claim
@@ -657,6 +530,9 @@ func UpdateInsuranceClaim(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
 	id := c.Param("id")
 	claimID, err := strconv.Atoi(id)
 	if err != nil {
@@ -664,130 +540,53 @@ func UpdateInsuranceClaim(c *gin.Context) {
 		return
 	}
 
-	var req UpdateInsuranceClaimRequest
+	var req models.UpdateInsuranceClaimRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Build the update query dynamically based on provided fields
-	query := "UPDATE insurance_claims SET updated_at = NOW()"
-	args := []interface{}{claimID}
-	argCount := 2
-
-	if req.PatientID != 0 {
-		query += ", patient_id = $" + strconv.Itoa(argCount)
-		args = append(args, req.PatientID)
-		argCount++
-	}
-
-	if req.TreatmentID != nil {
-		if *req.TreatmentID == 0 {
-			query += ", treatment_id = NULL"
-		} else {
-			query += ", treatment_id = $" + strconv.Itoa(argCount)
-			args = append(args, *req.TreatmentID)
-			argCount++
-		}
-	}
-
-	if req.ClaimAmount != 0 {
-		query += ", claim_amount = $" + strconv.Itoa(argCount)
-		args = append(args, req.ClaimAmount)
-		argCount++
-	}
-
-	if req.Status != "" {
-		query += ", status = $" + strconv.Itoa(argCount)
-		args = append(args, req.Status)
-		argCount++
-	}
-
-	if req.SubmissionDate != "" {
-		query += ", submission_date = $" + strconv.Itoa(argCount)
-		args = append(args, req.SubmissionDate)
-		argCount++
-	}
-
-	if req.ApprovalDate != nil {
-		if *req.ApprovalDate == "" {
-			query += ", approval_date = NULL"
-		} else {
-			query += ", approval_date = $" + strconv.Itoa(argCount)
-			args = append(args, *req.ApprovalDate)
-			argCount++
-		}
-	}
-
-	if req.Notes != "" {
-		query += ", notes = $" + strconv.Itoa(argCount)
-		args = append(args, req.Notes)
-		argCount++
-	}
-
-	query += " WHERE id = $1"
-
-	result, err := db.Exec(query, args...)
+	// Update insurance claim through service
+	updatedClaim, err := billingService.UpdateInsuranceClaim(claimID, req)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Insurance claim not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update insurance claim"})
 		return
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get rows affected"})
-		return
+	// Convert service model to handler response format
+	response := struct {
+		ID             int       `json:"id"`
+		PatientID      int       `json:"patientId"`
+		TreatmentID    *int      `json:"treatmentId"` // nullable
+		PatientName    string    `json:"patientName"`
+		TreatmentName  *string   `json:"treatmentName"` // nullable
+		ClaimAmount    float64   `json:"claimAmount"`
+		Status         string    `json:"status"`
+		SubmissionDate string    `json:"submissionDate"`
+		ApprovalDate   *string   `json:"approvalDate"` // nullable
+		Notes          string    `json:"notes"`
+		CreatedAt      time.Time `json:"createdAt"`
+		UpdatedAt      time.Time `json:"updatedAt"`
+	}{
+		ID:             updatedClaim.ID,
+		PatientID:      updatedClaim.PatientID,
+		TreatmentID:    updatedClaim.TreatmentID,
+		PatientName:    updatedClaim.PatientName,
+		TreatmentName:  updatedClaim.TreatmentName,
+		ClaimAmount:    updatedClaim.ClaimAmount,
+		Status:         updatedClaim.Status,
+		SubmissionDate: updatedClaim.SubmissionDate,
+		ApprovalDate:   updatedClaim.ApprovalDate,
+		Notes:          updatedClaim.Notes,
+		CreatedAt:      updatedClaim.CreatedAt,
+		UpdatedAt:      updatedClaim.UpdatedAt,
 	}
 
-	if rowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Insurance claim not found"})
-		return
-	}
-
-	// Retrieve the updated insurance claim
-	var updatedClaim InsuranceClaim
-	var treatmentID sql.NullInt64
-	var treatmentName sql.NullString
-	var approvalDate sql.NullString
-
-	err = db.QueryRow(`
-		SELECT ic.id, ic.patient_id, p.name as patient_name, ic.treatment_id, 
-		       t.name as treatment_name, ic.claim_amount, ic.status, 
-		       ic.submission_date, ic.approval_date, ic.notes, ic.created_at, ic.updated_at
-		FROM insurance_claims ic
-		JOIN patients p ON ic.patient_id = p.id
-		LEFT JOIN treatments t ON ic.treatment_id = t.id
-		WHERE ic.id = $1`, claimID).Scan(
-		&updatedClaim.ID, &updatedClaim.PatientID, &updatedClaim.PatientName,
-		&treatmentID, &updatedClaim.TreatmentName,
-		&updatedClaim.ClaimAmount, &updatedClaim.Status, &updatedClaim.SubmissionDate,
-		&approvalDate, &updatedClaim.Notes, &updatedClaim.CreatedAt, &updatedClaim.UpdatedAt,
-	)
-
-	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Insurance claim not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve updated insurance claim"})
-		return
-	}
-
-	// Handle nullable fields
-	if treatmentID.Valid {
-		treatmentIDValue := int(treatmentID.Int64)
-		updatedClaim.TreatmentID = &treatmentIDValue
-	}
-
-	if treatmentName.Valid {
-		updatedClaim.TreatmentName = &treatmentName.String
-	}
-
-	if approvalDate.Valid {
-		updatedClaim.ApprovalDate = &approvalDate.String
-	}
-
-	c.JSON(http.StatusOK, updatedClaim)
+	c.JSON(http.StatusOK, response)
 }
 
 // DeleteInsuranceClaim deletes an insurance claim by ID
@@ -795,6 +594,9 @@ func DeleteInsuranceClaim(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
+	// Create billing service
+	billingService := services.NewBillingService(db)
+
 	id := c.Param("id")
 	claimID, err := strconv.Atoi(id)
 	if err != nil {
@@ -802,20 +604,14 @@ func DeleteInsuranceClaim(c *gin.Context) {
 		return
 	}
 
-	result, err := db.Exec("DELETE FROM insurance_claims WHERE id = $1", claimID)
+	// Delete insurance claim through service
+	err = billingService.DeleteInsuranceClaim(claimID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Insurance claim not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete insurance claim"})
-		return
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get rows affected"})
-		return
-	}
-
-	if rowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Insurance claim not found"})
 		return
 	}
 

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, User, FileText } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Calendar, Clock, User, FileText, Search } from 'lucide-react';
 import appointmentService, { CreateAppointmentRequest } from '../../services/appointmentService';
 import patientService, { Patient } from '../../services/patientService';
 
@@ -19,6 +19,10 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   const appointmentTypes = [
     'Routine Cleaning',
@@ -32,12 +36,13 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
     'Follow-up'
   ];
 
-  // Fetch patients for selection
+  // Fetch all patients initially
   useEffect(() => {
     const fetchPatients = async () => {
       try {
         const patientList = await patientService.getAllPatients();
         setPatients(patientList);
+        setFilteredPatients(patientList);
       } catch (err) {
         console.error('Error fetching patients:', err);
       }
@@ -45,6 +50,41 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
 
     fetchPatients();
   }, []);
+
+  // Handle clicks outside the search dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Filter patients based on search term
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredPatients(patients);
+    } else {
+      const term = searchTerm.toLowerCase();
+      const filtered = patients.filter(patient => 
+        `${patient.firstName} ${patient.lastName}`.toLowerCase().includes(term) ||
+        patient.email.toLowerCase().includes(term) ||
+        patient.phone.includes(searchTerm)
+      );
+      setFilteredPatients(filtered);
+    }
+  }, [searchTerm, patients]);
+
+  const handlePatientSelect = (patient: Patient) => {
+    setFormData({...formData, patientId: patient.id});
+    setSearchTerm(`${patient.firstName} ${patient.lastName}`);
+    setShowDropdown(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,13 +97,6 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
         throw new Error('Please fill in all required fields');
       }
 
-      // Debug: Check token before making request
-      const token = localStorage.getItem('dental_token');
-      console.log('=== DEBUGGING APPOINTMENT CREATION ===');
-      console.log('Token exists:', !!token);
-      console.log('Token value:', token);
-      console.log('Form data:', formData);
-
       const appointmentData: CreateAppointmentRequest = {
         patientId: formData.patientId,
         appointmentDate: formData.date,
@@ -72,21 +105,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
         notes: formData.notes
       };
 
-      console.log('Appointment data to send:', appointmentData);
-
-      // Test the token by making a simple request first
-      try {
-        console.log('Testing token with getAppointments...');
-        await appointmentService.getAppointments();
-        console.log('Token test successful');
-      } catch (tokenError) {
-        console.error('Token test failed:', tokenError);
-        throw new Error('Authentication token is invalid or expired');
-      }
-
-      console.log('Creating appointment...');
       const result = await appointmentService.createAppointment(appointmentData);
-      console.log('Appointment created successfully:', result);
       
       if (onAppointmentCreated) {
         onAppointmentCreated();
@@ -94,12 +113,8 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
       
       onClose();
     } catch (err: any) {
-      console.error('Full error object:', err);
-      console.error('Error response:', err.response);
-      
       let errorMessage = 'Failed to create appointment. Please try again.';
       
-      // Check if it's an axios error with response data
       if (err.response && err.response.data) {
         if (err.response.data.error) {
           errorMessage = err.response.data.error;
@@ -133,13 +148,6 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
           <p className="text-red-700 text-sm">{error}</p>
-          {/* Debug info for auth errors */}
-          {error.includes('Authorization') && (
-            <div className="mt-2 text-xs text-red-600">
-              <p>Token exists: {!!localStorage.getItem('dental_token')}</p>
-              <p>Token length: {localStorage.getItem('dental_token')?.length || 0}</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -150,20 +158,48 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
             <User className="w-4 h-4 inline mr-2" />
             Patient
           </label>
-          <select
-            value={formData.patientId || ''}
-            onChange={(e) => setFormData({...formData, patientId: parseInt(e.target.value) || 0})}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            required
-            disabled={loading}
-          >
-            <option value="">Select a patient...</option>
-            {patients.map((patient) => (
-              <option key={patient.id} value={patient.id}>
-                {patient.name} (ID: {patient.id})
-              </option>
-            ))}
-          </select>
+          <div className="relative" ref={searchRef}>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setShowDropdown(true);
+                }}
+                onFocus={() => setShowDropdown(true)}
+                placeholder="Search patient by name..."
+                className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={loading}
+              />
+            </div>
+            
+            {showDropdown && (
+              <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-auto">
+                {filteredPatients.length === 0 ? (
+                  <div className="px-4 py-2 text-gray-500">No patients found</div>
+                ) : (
+                  filteredPatients.map((patient) => (
+                    <div
+                      key={patient.id}
+                      className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                      onClick={() => handlePatientSelect(patient)}
+                    >
+                      <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                      <div className="text-sm text-gray-500">ID: {patient.id} | {patient.email} | {patient.phone}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          
+          {formData.patientId > 0 && (
+            <div className="mt-2 text-sm text-gray-600">
+              Selected: {searchTerm} (ID: {formData.patientId})
+            </div>
+          )}
         </div>
 
         {/* Date and Time */}
@@ -280,7 +316,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
           <button
             type="submit"
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={loading}
+            disabled={loading || !formData.patientId}
           >
             {loading ? 'Scheduling...' : 'Schedule Appointment'}
           </button>

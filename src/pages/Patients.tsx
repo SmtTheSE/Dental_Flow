@@ -1,5 +1,5 @@
 // src/pages/Patients.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, Filter, Plus, Phone, Mail, Calendar, User } from 'lucide-react';
 import PatientCard from '../components/patients/PatientCard';
 import patientService, { Patient, CreatePatientRequest } from '../services/patientService';
@@ -28,6 +28,10 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  
+  // For debouncing search requests
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch patients from the backend
   useEffect(() => {
@@ -36,31 +40,56 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
 
   const loadPatients = async (search?: string, status?: string) => {
     try {
-      setLoading(true);
+      // Only show loading indicator for initial load, not for search
+      if (!search && !status) {
+        setLoading(true);
+      } else {
+        setSearching(true);
+      }
+      
       const data = await patientService.getAllPatients(search, status);
-      setPatients(data);
+      setPatients(data || []); // Ensure we always have an array
       setError(null);
     } catch (err) {
       setError('Failed to load patients');
       console.error('Error loading patients:', err);
+      // Keep existing patients on error, or set to empty array
+      setPatients([]);
     } finally {
       setLoading(false);
+      setSearching(false);
     }
   };
 
-  // Filter patients based on search term and filter status
+  // Debounced search effect
   useEffect(() => {
-    loadPatients(searchTerm, filterStatus);
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Set new timeout
+    searchTimeoutRef.current = setTimeout(() => {
+      loadPatients(searchTerm, filterStatus);
+    }, 300); // 300ms delay
+    
+    // Cleanup timeout on unmount or when dependencies change
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
   }, [searchTerm, filterStatus]);
 
-  const filteredPatients = patients.filter(patient => {
+  // Make sure patients is always an array before filtering
+  const filteredPatients = Array.isArray(patients) ? patients.filter(patient => {
     const matchesSearch = patient.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          patient.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          patient.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          patient.phone.includes(searchTerm);
     const matchesFilter = filterStatus === 'all' || patient.riskLevel === filterStatus;
     return matchesSearch && matchesFilter;
-  });
+  }) : [];
 
   const handleAddPatient = () => {
     setShowAddPatientModal(true);
@@ -159,6 +188,11 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searching && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+              </div>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <Filter className="text-gray-400 w-5 h-5" />
@@ -176,15 +210,27 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
         </div>
       </div>
 
-      {/* Patient Cards */}
+      {/* Patient Cards or No Patients Message */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPatients.map((patient) => (
-          <PatientCard
-            key={patient.id}
-            patient={patient}
-            onSelect={() => setSelectedPatient(patient)}
-          />
-        ))}
+        {filteredPatients.length > 0 ? (
+          filteredPatients.map((patient) => (
+            <PatientCard
+              key={patient.id}
+              patient={patient}
+              onSelect={() => setSelectedPatient(patient)}
+            />
+          ))
+        ) : (
+          <div className="col-span-full text-center py-12">
+            <User className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No patients found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchTerm || filterStatus !== 'all' 
+                ? 'Try adjusting your search or filter criteria' 
+                : 'Get started by adding a new patient'}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Add Patient Modal */}

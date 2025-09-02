@@ -43,7 +43,8 @@ func (s *PatientService) GetAllPatients(search, status string) ([]models.Patient
 		placeholder1 := fmt.Sprintf("$%d", argCount)
 		placeholder2 := fmt.Sprintf("$%d", argCount+1)
 		placeholder3 := fmt.Sprintf("$%d", argCount+2)
-		query += fmt.Sprintf(" AND (first_name ILIKE %s OR last_name ILIKE %s OR email ILIKE %s OR phone ILIKE %s)", placeholder1, placeholder2, placeholder3, placeholder3)
+		placeholder4 := fmt.Sprintf("$%d", argCount+3)
+		query += fmt.Sprintf(" AND (first_name ILIKE %s OR last_name ILIKE %s OR email ILIKE %s OR phone ILIKE %s)", placeholder1, placeholder2, placeholder3, placeholder4)
 		args = append(args, "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 		argCount += 4
 	}

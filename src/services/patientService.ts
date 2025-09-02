@@ -53,8 +53,11 @@ class PatientService {
       if (search) params.append('search', search);
       if (status) params.append('status', status);
       
+      // Fix the URL construction to properly include the query parameters
+      const url = `${API_BASE_URL}/api/patients${params.toString() ? `?${params.toString()}` : ''}`;
+      
       const response = await axios.get<Patient[]>(
-        `${API_BASE_URL}/api/patients${params.toString() ? `?${params.toString()}` : ''}`,
+        url,
         this.getAuthHeaders()
       );
       return response.data;

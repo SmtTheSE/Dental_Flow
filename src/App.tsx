@@ -57,7 +57,7 @@ const AppLayout: React.FC = () => {
             <Route path="/patients" element={<Patients setSelectedPatient={setSelectedPatient} />} />
             <Route path="/patient/:id" element={<PatientDetail patient={selectedPatient} />} />
             <Route path="/appointments" element={<Appointments />} />
-            <Route path="/treatment-planning" element={<TreatmentPlanning />} />
+            <Route path="/treatment-planning" element={<TreatmentPlanning selectedPatient={selectedPatient} />} />
             <Route path="/billing" element={<Billing />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -78,12 +78,6 @@ function App() {
           <Route path="/register" element={<Register />} />
           
           {/* Protected routes */}
-          <Route path="/" element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          } />
-          
           <Route path="/*" element={
             <ProtectedRoute>
               <AppLayout />

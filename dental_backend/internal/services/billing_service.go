@@ -69,10 +69,10 @@ func (s *BillingService) GetBillingStats() (*models.BillingStats, error) {
 // GetAllInvoices retrieves all invoices with optional filtering
 func (s *BillingService) GetAllInvoices(status, patientID string) ([]models.Invoice, error) {
 	query := `
-		SELECT i.id, i.patient_id, p.name as patient_name, i.amount, i.status, 
-		       i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
+		SELECT i.id, i.patient_id, COALESCE(p.first_name || ' ' || p.last_name, 'Unknown Patient') as patient_name, 
+		       i.amount, i.status, i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
 		FROM invoices i
-		JOIN patients p ON i.patient_id = p.id
+		LEFT JOIN patients p ON i.patient_id = p.id
 		WHERE 1=1`
 
 	args := []interface{}{}
@@ -112,17 +112,22 @@ func (s *BillingService) GetAllInvoices(status, patientID string) ([]models.Invo
 		invoices = append(invoices, i)
 	}
 
-	return invoices, rows.Err()
+	// Check for errors that occurred during iteration
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return invoices, nil
 }
 
-// GetInvoiceByID retrieves a single invoice by ID
+// / GetInvoiceByID retrieves a single invoice by ID
 func (s *BillingService) GetInvoiceByID(id int) (*models.Invoice, error) {
 	var i models.Invoice
 	err := s.db.QueryRow(`
-		SELECT i.id, i.patient_id, p.name as patient_name, i.amount, i.status, 
-		       i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
+		SELECT i.id, i.patient_id, COALESCE(p.first_name || ' ' || p.last_name, 'Unknown Patient') as patient_name, 
+		       i.amount, i.status, i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
 		FROM invoices i
-		JOIN patients p ON i.patient_id = p.id
+		LEFT JOIN patients p ON i.patient_id = p.id
 		WHERE i.id = $1`, id).Scan(
 		&i.ID, &i.PatientID, &i.PatientName, &i.Amount, &i.Status,
 		&i.DueDate, &i.IssuedDate, &i.PaymentMethod, &i.Notes,
@@ -151,7 +156,7 @@ func (s *BillingService) CreateInvoice(req models.CreateInvoiceRequest) (*models
 		INSERT INTO invoices (
 			patient_id, amount, status, due_date, issued_date, payment_method, notes, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, NOW(), NOW())
-		RETURNING id, patient_id, (SELECT name FROM patients WHERE id = $1), 
+		RETURNING id, patient_id, (SELECT COALESCE(first_name || ' ' || last_name, 'Unknown Patient') FROM patients WHERE id = $1), 
 		          amount, status, due_date, issued_date, payment_method, notes, created_at, updated_at`,
 		req.PatientID, req.Amount, req.Status, req.DueDate, nullIfEmpty(req.IssuedDate), req.PaymentMethod, req.Notes,
 	).Scan(

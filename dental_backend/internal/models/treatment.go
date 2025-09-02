@@ -7,14 +7,13 @@ import (
 
 // Treatment represents a treatment in the system
 type Treatment struct {
-	ID          int       `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
-	Description string    `json:"description" db:"description"`
-	Cost        float64   `json:"cost" db:"cost"`
-	Duration    int       `json:"duration" db:"duration"` // in minutes
-	Category    string    `json:"category" db:"category"`
-	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+	ID          int     `json:"id" db:"id"`
+	Name        string  `json:"name" db:"name"`
+	Description string  `json:"description" db:"description"`
+	Cost        float64 `json:"cost" db:"cost"`
+	Duration    int     `json:"duration" db:"duration_minutes"` // in minutes
+	Category    string  `json:"category" db:"category"`
+	// Removed CreatedAt and UpdatedAt since they don't exist in the database
 }
 
 // PatientTreatment represents a patient's treatment record
@@ -46,6 +45,15 @@ const (
 	TreatmentCategoryRootCanal    TreatmentCategory = "Root Canal"
 	TreatmentCategorySurgery      TreatmentCategory = "Surgery"
 	TreatmentCategoryOrthodontics TreatmentCategory = "Orthodontics"
+)
+
+// PatientTreatmentStatus represents the status of a patient's treatment
+type PatientTreatmentStatus string
+
+const (
+	PatientTreatmentStatusPending    PatientTreatmentStatus = "pending"
+	PatientTreatmentStatusInProgress PatientTreatmentStatus = "in-progress"
+	PatientTreatmentStatusCompleted  PatientTreatmentStatus = "completed"
 )
 
 // PatientTreatmentPriority represents the priority of a patient's treatment
