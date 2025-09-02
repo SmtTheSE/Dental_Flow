@@ -58,55 +58,51 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const login = async (email: string, password: string): Promise<void> => {
-    
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Login failed');
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Login failed');
+    }
 
-      const data: AuthResponse = await response.json();
-      
-      // Store token and user data
-      localStorage.setItem('dental_token', data.token);
-      localStorage.setItem('dental_user', JSON.stringify(data.user));
-      
-      setToken(data.token);
-      setUser(data.user);
+    const data: AuthResponse = await response.json();
     
+    // Store token and user data
+    localStorage.setItem('dental_token', data.token);
+    localStorage.setItem('dental_user', JSON.stringify(data.user));
+    
+    setToken(data.token);
+    setUser(data.user);
   };
 
   const register = async (userData: RegisterData): Promise<void> => {
-    
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(userData),
-      });
+    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(userData),
+    });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Registration failed');
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Registration failed');
+    }
 
-      const data: AuthResponse = await response.json();
-      
-      // Store token and user data
-      localStorage.setItem('dental_token', data.token);
-      localStorage.setItem('dental_user', JSON.stringify(data.user));
-      
-      setToken(data.token);
-      setUser(data.user);
+    const data: AuthResponse = await response.json();
     
+    // Store token and user data
+    localStorage.setItem('dental_token', data.token);
+    localStorage.setItem('dental_user', JSON.stringify(data.user));
+    
+    setToken(data.token);
+    setUser(data.user);
   };
 
   const logout = (): void => {

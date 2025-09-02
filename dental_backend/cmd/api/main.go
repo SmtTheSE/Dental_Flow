@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+
 	"syscall"
 	"time"
 
@@ -21,12 +22,17 @@ import (
 
 func main() {
 	// Load environment variables from .env file
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Println("No .env file found, trying to load from dental_backend/.env")
+		err = godotenv.Load("dental_backend/.env")
+		if err != nil {
+			log.Println("No dental_backend/.env file found, using system environment variables")
+		}
 	}
 
 	// Initialize database connection using the shared database package
-	_, err := database.InitDB()
+	_, err = database.InitDB()
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
@@ -97,6 +103,8 @@ func setupRoutes(router *gin.Engine) {
 		// Authentication endpoints
 		api.POST("/auth/register", handlers.Register)
 		api.POST("/auth/login", handlers.Login)
+		api.POST("/auth/google-login", handlers.GoogleLogin)       // Add Google login route
+		api.POST("/auth/google-register", handlers.GoogleRegister) // Add Google registration route
 		api.GET("/auth/user", handlers.AuthMiddleware(), handlers.GetCurrentUser)
 
 		// Dashboard endpoints
@@ -159,10 +167,19 @@ func setupRoutes(router *gin.Engine) {
 // Middleware to handle CORS
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := c.Request.Header.Get("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		// Completely remove Cross-Origin-Opener-Policy for all requests to fix Google OAuth popup issues
+		// This is required for Google OAuth to work properly
+		c.Writer.Header().Del("Cross-Origin-Opener-Policy")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)

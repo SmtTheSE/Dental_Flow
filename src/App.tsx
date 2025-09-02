@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -14,52 +15,48 @@ import Appointments from './pages/Appointments';
 import TreatmentPlanning from './pages/TreatmentPlanning';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
+import { Patient } from './services/patientService';
 
 // Main App Layout Component
 const AppLayout: React.FC = () => { 
   const location = useLocation();
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [currentPage, setCurrentPage] = useState('dashboard');
 
-  // Determine the current page based on the location
-  const getCurrentPage = () => {
-    switch (location.pathname) {
-      case '/patients':
-        return 'patients';
-      case '/appointments':
-        return 'appointments';
-      case '/treatment-planning':
-        return 'treatment-planning';
-      case '/billing':
-        return 'billing';
-      case '/analytics':
-        return 'analytics';
-      default:
-        return 'dashboard';
-    }
-  };
-
-  const [currentPage, setCurrentPage] = useState(getCurrentPage());
-
-  // Update currentPage when location changes
+  // Update currentPage based on current route
   React.useEffect(() => {
-    setCurrentPage(getCurrentPage());
-  }, [location]);
+    const pathToPageMap: Record<string, string> = {
+      '/': 'dashboard',
+      '/patients': 'patients',
+      '/appointments': 'appointments',
+      '/treatment-planning': 'treatment-planning',
+      '/billing': 'billing',
+      '/analytics': 'analytics'
+    };
+    
+    const page = pathToPageMap[location.pathname] || 'dashboard';
+    setCurrentPage(page);
+  }, [location.pathname]);
+
+  // Don't show sidebar and header on auth pages
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+      {!isAuthPage && <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-6">
+        {!isAuthPage && <Header />}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Routes>
-            <Route index element={<Dashboard />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/patients" element={<Patients setSelectedPatient={setSelectedPatient} />} />
-            <Route path="/patient/:id" element={<PatientDetail patient={selectedPatient} />} />
-            <Route path="/appointments" element={<Appointments />} />
-            <Route path="/treatment-planning" element={<TreatmentPlanning selectedPatient={selectedPatient} />} />
-            <Route path="/billing" element={<Billing />} />
-            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/patients" element={<ProtectedRoute><Patients setSelectedPatient={setSelectedPatient} /></ProtectedRoute>} />
+            <Route path="/patients/:id" element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
+            <Route path="/appointments" element={<ProtectedRoute><Appointments /></ProtectedRoute>} />
+            <Route path="/treatment-planning" element={<ProtectedRoute><TreatmentPlanning selectedPatient={selectedPatient} /></ProtectedRoute>} />
+            <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
+            <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -68,25 +65,18 @@ const AppLayout: React.FC = () => {
   );
 };
 
-function App() {
+const App: React.FC = () => {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          
-          {/* Protected routes */}
-          <Route path="/*" element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </Router>
-    </AuthProvider>
+    <GoogleOAuthProvider clientId={clientId}>
+      <AuthProvider>
+        <Router>
+          <AppLayout />
+        </Router>
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
-}
+};
 
 export default App;
