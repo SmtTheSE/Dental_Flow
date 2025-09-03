@@ -1,11 +1,27 @@
-// dental_backend/internal/services/appointment_service.go
+// dental_backend/internal/services/appointment_services.go
 package services
 
 import (
 	"database/sql"
 	"dental_backend/internal/models"
+	"strconv"
+	"strings"
 	"time"
 )
+
+// ValidationError represents a validation error
+type ValidationError struct {
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Message
+}
+
+// formatInt converts an integer to a string
+func formatInt(i int) string {
+	return strconv.Itoa(i)
+}
 
 // AppointmentService provides business logic for appointment operations
 type AppointmentService struct {
@@ -53,40 +69,37 @@ func (s *AppointmentService) GetTodaysAppointments(dentistID int) ([]models.Appo
 }
 
 // GetAllAppointments retrieves all appointments with optional filtering for the logged-in dentist
-func (s *AppointmentService) GetAllAppointments(dentistID int, date, status, patientID string) ([]models.Appointment, error) {
+func (s *AppointmentService) GetAllAppointments(dentistID int, date *string, status *string, patientID *int) ([]models.Appointment, error) {
 	query := `
 		SELECT a.id, a.patient_id,
-		       p.first_name || ' ' || p.last_name as patient_name, 
+		       p.first_name || ' ' || p.last_name as patient_name,
 		       a.appointment_date, a.start_time, a.status, a.notes, a.created_at, a.updated_at
 		FROM appointments a
 		JOIN patients p ON a.patient_id = p.id
 		WHERE a.dentist_id = $1`
 
 	args := []interface{}{dentistID}
-	argCount := 2
+	argIndex := 2
 
-	if date != "" {
-		placeholder := argCount
-		query += " AND a.appointment_date = $" + formatInt(placeholder)
-		args = append(args, date)
-		argCount++
+	if date != nil {
+		query += " AND a.appointment_date = $" + formatInt(argIndex)
+		args = append(args, *date)
+		argIndex++
 	}
 
-	if status != "" {
-		placeholder := argCount
-		query += " AND a.status = $" + formatInt(placeholder)
-		args = append(args, status)
-		argCount++
+	if status != nil {
+		query += " AND a.status = $" + formatInt(argIndex)
+		args = append(args, *status)
+		argIndex++
 	}
 
-	if patientID != "" {
-		placeholder := argCount
-		query += " AND a.patient_id = $" + formatInt(placeholder)
-		args = append(args, patientID)
-		argCount++
+	if patientID != nil {
+		query += " AND a.patient_id = $" + formatInt(argIndex)
+		args = append(args, *patientID)
+		argIndex++
 	}
 
-	query += " ORDER BY a.appointment_date DESC, a.start_time ASC"
+	query += " ORDER BY a.appointment_date ASC, a.start_time ASC"
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -111,19 +124,20 @@ func (s *AppointmentService) GetAllAppointments(dentistID int, date, status, pat
 	return appointments, rows.Err()
 }
 
-// GetAppointmentByID retrieves a single appointment by ID for the logged-in dentist
+// GetAppointmentByID retrieves a specific appointment by ID for the logged-in dentist
 func (s *AppointmentService) GetAppointmentByID(id int, dentistID int) (*models.Appointment, error) {
-	var a models.Appointment
+	var appointment models.Appointment
 	err := s.db.QueryRow(`
 		SELECT a.id, a.patient_id,
-		       p.first_name || ' ' || last_name as patient_name, 
+		       p.first_name || ' ' || p.last_name as patient_name,
 		       a.appointment_date, a.start_time, a.status, a.notes, a.created_at, a.updated_at
 		FROM appointments a
 		JOIN patients p ON a.patient_id = p.id
-		WHERE a.id = $1 AND a.dentist_id = $2`, id, dentistID).Scan(
-		&a.ID, &a.PatientID, &a.PatientName,
-		&a.AppointmentDate, &a.StartTime, &a.Status, &a.Notes,
-		&a.CreatedAt, &a.UpdatedAt,
+		WHERE a.id = $1 AND a.dentist_id = $2`,
+		id, dentistID).Scan(
+		&appointment.ID, &appointment.PatientID, &appointment.PatientName,
+		&appointment.AppointmentDate, &appointment.StartTime, &appointment.Status,
+		&appointment.Notes, &appointment.CreatedAt, &appointment.UpdatedAt,
 	)
 
 	if err != nil {
@@ -133,24 +147,21 @@ func (s *AppointmentService) GetAppointmentByID(id int, dentistID int) (*models.
 		return nil, err
 	}
 
-	return &a, nil
+	return &appointment, nil
 }
 
-// CreateAppointment creates a new appointment associated with the logged-in dentist
+// CreateAppointment creates a new appointment for the logged-in dentist
 func (s *AppointmentService) CreateAppointment(req models.CreateAppointmentRequest, dentistID int) (*models.Appointment, error) {
-	// Validate that the appointment time is in the future
 	appDate, err := time.Parse("2006-01-02", req.AppointmentDate)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if appointment date is in the past
 	today := time.Now().Truncate(24 * time.Hour)
 	if appDate.Before(today) {
 		return nil, &ValidationError{"Appointment date cannot be in the past"}
 	}
 
-	// Set default status if not provided
 	if req.Status == "" {
 		req.Status = string(models.AppointmentStatusScheduled)
 	}
@@ -180,65 +191,59 @@ func (s *AppointmentService) CreateAppointment(req models.CreateAppointmentReque
 
 // UpdateAppointment updates an existing appointment for the logged-in dentist
 func (s *AppointmentService) UpdateAppointment(id int, req models.UpdateAppointmentRequest, dentistID int) (*models.Appointment, error) {
-	// If appointment date is provided, validate it
 	if req.AppointmentDate != "" {
 		appDate, err := time.Parse("2006-01-02", req.AppointmentDate)
 		if err != nil {
 			return nil, err
 		}
-
-		// Check if appointment date is in the past
 		today := time.Now().Truncate(24 * time.Hour)
 		if appDate.Before(today) {
 			return nil, &ValidationError{"Appointment date cannot be in the past"}
 		}
 	}
 
-	// Set default status if not provided
-	if req.Status == "" {
-		req.Status = string(models.AppointmentStatusScheduled)
-	}
-
-	// Build dynamic update query
-	query := "UPDATE appointments SET updated_at = NOW()"
-	args := []interface{}{id, dentistID}
-	argIndex := 3 // Starting index for arguments
+	setClauses := []string{"updated_at = NOW()"}
+	args := []interface{}{}
+	argIndex := 1
 
 	if req.PatientID != 0 {
-		query += ", patient_id = $" + formatInt(argIndex)
+		setClauses = append(setClauses, "patient_id = $"+strconv.Itoa(argIndex))
 		args = append(args, req.PatientID)
 		argIndex++
 	}
-
 	if req.AppointmentDate != "" {
-		query += ", appointment_date = $" + formatInt(argIndex)
+		setClauses = append(setClauses, "appointment_date = $"+strconv.Itoa(argIndex))
 		args = append(args, req.AppointmentDate)
 		argIndex++
 	}
-
 	if req.StartTime != "" {
-		query += ", start_time = $" + formatInt(argIndex)
+		setClauses = append(setClauses, "start_time = $"+strconv.Itoa(argIndex))
 		args = append(args, req.StartTime)
 		argIndex++
 	}
-
 	if req.Status != "" {
-		query += ", status = $" + formatInt(argIndex)
+		setClauses = append(setClauses, "status = $"+strconv.Itoa(argIndex))
 		args = append(args, req.Status)
 		argIndex++
 	}
-
 	if req.Notes != "" {
-		query += ", notes = $" + formatInt(argIndex)
+		setClauses = append(setClauses, "notes = $"+strconv.Itoa(argIndex))
 		args = append(args, req.Notes)
 		argIndex++
 	}
 
-	query += " WHERE id = $1 AND dentist_id = $2 RETURNING id, patient_id, " +
+	// dentistID and id go LAST - but we need to track their indices properly
+	dentistIDIndex := argIndex
+	idIndex := argIndex + 1
+	args = append(args, dentistID, id)
+
+	query := "UPDATE appointments SET " +
+		strings.Join(setClauses, ", ") +
+		" WHERE dentist_id = $" + strconv.Itoa(dentistIDIndex) +
+		" AND id = $" + strconv.Itoa(idIndex) +
+		" RETURNING id, patient_id, " +
 		"(SELECT first_name || ' ' || last_name FROM patients WHERE id = patient_id), " +
 		"appointment_date, start_time, status, notes, created_at, updated_at"
-
-	args = append(args, id, dentistID)
 
 	var updatedAppointment models.Appointment
 	err := s.db.QueryRow(query, args...).Scan(
@@ -247,14 +252,12 @@ func (s *AppointmentService) UpdateAppointment(id int, req models.UpdateAppointm
 		&updatedAppointment.AppointmentDate, &updatedAppointment.StartTime, &updatedAppointment.Status,
 		&updatedAppointment.Notes, &updatedAppointment.CreatedAt, &updatedAppointment.UpdatedAt,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-
 	return &updatedAppointment, nil
 }
 
@@ -275,22 +278,4 @@ func (s *AppointmentService) DeleteAppointment(id int, dentistID int) error {
 	}
 
 	return nil
-}
-
-// ValidationError represents a validation error
-type ValidationError struct {
-	Message string
-}
-
-func (e *ValidationError) Error() string {
-	return e.Message
-}
-
-// formatInt converts an integer to a string
-// This is a helper function to avoid using fmt.Sprintf in query building
-func formatInt(i int) string {
-	return []string{
-		"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
-		"11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
-	}[i]
 }

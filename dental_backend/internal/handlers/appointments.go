@@ -58,10 +58,32 @@ func GetAppointments(c *gin.Context) {
 	// Get query parameters for filtering
 	date := c.Query("date")
 	status := c.Query("status")
-	patientID := c.Query("patientId")
+	patientIDStr := c.Query("patientId")
+
+	// Convert parameters to pointers as expected by the service method
+	var datePtr *string
+	var statusPtr *string
+	var patientIDPtr *int
+
+	if date != "" {
+		datePtr = &date
+	}
+
+	if status != "" {
+		statusPtr = &status
+	}
+
+	if patientIDStr != "" {
+		patientIDInt, err := strconv.Atoi(patientIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid patient ID"})
+			return
+		}
+		patientIDPtr = &patientIDInt
+	}
 
 	// Get appointments from service
-	appointments, err := appointmentService.GetAllAppointments(dentistID.(int), date, status, patientID)
+	appointments, err := appointmentService.GetAllAppointments(dentistID.(int), datePtr, statusPtr, patientIDPtr)
 	if err != nil {
 		log.Printf("Error retrieving appointments: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments", "details": err.Error()})
@@ -183,7 +205,7 @@ func UpdateAppointment(c *gin.Context) {
 			return
 		}
 		// Check if appointment was not found
-		if err != nil && err == sql.ErrNoRows {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Appointment not found"})
 			return
 		}

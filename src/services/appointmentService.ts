@@ -6,6 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080
 export interface Appointment {
   id: number;
   patientId: number;
+  dentistId: number;
   patientName: string;
   appointmentDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
@@ -17,6 +18,7 @@ export interface Appointment {
 
 export interface CreateAppointmentRequest {
   patientId: number;
+  dentistId?: number;
   appointmentDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
   status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
@@ -25,6 +27,7 @@ export interface CreateAppointmentRequest {
 
 export interface UpdateAppointmentRequest {
   patientId?: number;
+  dentistId?: number;
   appointmentDate?: string; // YYYY-MM-DD
   startTime?: string; // HH:MM
   status?: 'scheduled' | 'completed' | 'cancelled' | 'no-show';

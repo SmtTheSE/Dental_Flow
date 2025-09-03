@@ -1,20 +1,63 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Clock, User, FileText, Search } from 'lucide-react';
-import appointmentService, { CreateAppointmentRequest } from '../../services/appointmentService';
+import appointmentService, { CreateAppointmentRequest, UpdateAppointmentRequest, Appointment } from '../../services/appointmentService';
 import patientService, { Patient } from '../../services/patientService';
 
 interface AppointmentFormProps {
   onClose: () => void;
   onAppointmentCreated?: () => void;
+  onAppointmentUpdated?: () => void;
+  appointment?: Appointment; // Existing appointment for editing
 }
 
-const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmentCreated }) => {
+const AppointmentForm: React.FC<AppointmentFormProps> = ({ 
+  onClose, 
+  onAppointmentCreated, 
+  onAppointmentUpdated,
+  appointment 
+}) => {
+  // Helper function to format date for input
+  const formatDateForInput = (dateString: string): string => {
+    // If it's already in the correct format (YYYY-MM-DD), return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+    
+    // If it's an ISO date string, extract the date part
+    if (dateString.includes('T')) {
+      return dateString.split('T')[0];
+    }
+    
+    // For any other format, try to parse and format
+    return dateString;
+  };
+
+  // Helper function to format time for input
+  const formatTimeForInput = (timeString: string): string => {
+    // If it's already in the correct format (HH:mm), return as is
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(timeString)) {
+      return timeString.substring(0, 5); // Ensure it's HH:mm format
+    }
+    
+    // If it's an ISO time string, extract the time part
+    if (timeString.includes('T')) {
+      const timePart = timeString.split('T')[1];
+      if (timePart.includes('Z')) {
+        return timePart.split('Z')[0].substring(0, 5);
+      }
+      return timePart.substring(0, 5);
+    }
+    
+    // For any other format, return as is
+    return timeString;
+  };
+
   const [formData, setFormData] = useState({
-    patientId: 0,
-    date: '',
-    startTime: '',
-    status: 'scheduled' as 'scheduled' | 'completed' | 'cancelled' | 'no-show',
-    notes: ''
+    patientId: appointment?.patientId || 0,
+    date: appointment?.appointmentDate ? formatDateForInput(appointment.appointmentDate) : new Date().toISOString().split('T')[0],
+    startTime: appointment?.startTime ? formatTimeForInput(appointment.startTime) : '09:00',
+    status: appointment?.status || 'scheduled' as 'scheduled' | 'completed' | 'cancelled' | 'no-show',
+    notes: appointment?.notes || ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,13 +86,21 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
         const patientList = await patientService.getAllPatients();
         setPatients(patientList);
         setFilteredPatients(patientList);
+        
+        // If editing an appointment, find the patient and set the search term
+        if (appointment && appointment.patientId) {
+          const patient = patientList.find(p => p.id === appointment.patientId);
+          if (patient) {
+            setSearchTerm(`${patient.firstName} ${patient.lastName}`);
+          }
+        }
       } catch (err) {
         console.error('Error fetching patients:', err);
       }
     };
 
     fetchPatients();
-  }, []);
+  }, [appointment]);
 
   // Handle clicks outside the search dropdown
   useEffect(() => {
@@ -97,23 +148,43 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
         throw new Error('Please fill in all required fields');
       }
 
-      const appointmentData: CreateAppointmentRequest = {
-        patientId: formData.patientId,
-        appointmentDate: formData.date,
-        startTime: formData.startTime,
-        status: formData.status,
-        notes: formData.notes
-      };
+      if (appointment) {
+        // Update existing appointment
+        const appointmentData: UpdateAppointmentRequest = {
+          patientId: formData.patientId,
+          appointmentDate: formData.date,
+          startTime: formData.startTime,
+          status: formData.status,
+          notes: formData.notes
+        };
 
-      const result = await appointmentService.createAppointment(appointmentData);
-      
-      if (onAppointmentCreated) {
-        onAppointmentCreated();
+        await appointmentService.updateAppointment(appointment.id, appointmentData);
+        
+        if (onAppointmentUpdated) {
+          onAppointmentUpdated();
+        }
+      } else {
+        // Create new appointment
+        const appointmentData: CreateAppointmentRequest = {
+          patientId: formData.patientId,
+          appointmentDate: formData.date,
+          startTime: formData.startTime,
+          status: formData.status,
+          notes: formData.notes
+        };
+
+        await appointmentService.createAppointment(appointmentData);
+        
+        if (onAppointmentCreated) {
+          onAppointmentCreated();
+        }
       }
       
       onClose();
     } catch (err: any) {
-      let errorMessage = 'Failed to create appointment. Please try again.';
+      let errorMessage = appointment 
+        ? 'Failed to update appointment. Please try again.' 
+        : 'Failed to create appointment. Please try again.';
       
       if (err.response && err.response.data) {
         if (err.response.data.error) {
@@ -135,7 +206,9 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Schedule New Appointment</h2>
+        <h2 className="text-xl font-semibold text-gray-900">
+          {appointment ? 'Update Appointment' : 'Schedule New Appointment'}
+        </h2>
         <button 
           onClick={onClose}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -160,37 +233,35 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
           </label>
           <div className="relative" ref={searchRef}>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setShowDropdown(true);
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 onFocus={() => setShowDropdown(true)}
-                placeholder="Search patient by name..."
-                className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Search patients..."
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
                 disabled={loading}
               />
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             </div>
             
-            {showDropdown && (
-              <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-auto">
-                {filteredPatients.length === 0 ? (
-                  <div className="px-4 py-2 text-gray-500">No patients found</div>
-                ) : (
-                  filteredPatients.map((patient) => (
-                    <div
-                      key={patient.id}
-                      className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                      onClick={() => handlePatientSelect(patient)}
-                    >
-                      <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                      <div className="text-sm text-gray-500">ID: {patient.id} | {patient.email} | {patient.phone}</div>
+            {showDropdown && filteredPatients.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {filteredPatients.map((patient) => (
+                  <button
+                    key={patient.id}
+                    type="button"
+                    onClick={() => handlePatientSelect(patient)}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                  >
+                    <div className="font-medium text-gray-900">
+                      {patient.firstName} {patient.lastName}
                     </div>
-                  ))
-                )}
+                    <div className="text-sm text-gray-500">
+                      {patient.email} • {patient.phone}
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -223,30 +294,14 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
               <Clock className="w-4 h-4 inline mr-2" />
               Start Time
             </label>
-            <select
+            <input
+              type="time"
               value={formData.startTime}
               onChange={(e) => setFormData({...formData, startTime: e.target.value})}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
               disabled={loading}
-            >
-              <option value="">Select time...</option>
-              <option value="08:00">8:00 AM</option>
-              <option value="08:30">8:30 AM</option>
-              <option value="09:00">9:00 AM</option>
-              <option value="09:30">9:30 AM</option>
-              <option value="10:00">10:00 AM</option>
-              <option value="10:30">10:30 AM</option>
-              <option value="11:00">11:00 AM</option>
-              <option value="11:30">11:30 AM</option>
-              <option value="14:00">2:00 PM</option>
-              <option value="14:30">2:30 PM</option>
-              <option value="15:00">3:00 PM</option>
-              <option value="15:30">3:30 PM</option>
-              <option value="16:00">4:00 PM</option>
-              <option value="16:30">4:30 PM</option>
-              <option value="17:00">5:00 PM</option>
-            </select>
+            />
           </div>
         </div>
 
@@ -260,7 +315,6 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
               value={formData.notes}
               onChange={(e) => setFormData({...formData, notes: e.target.value})}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
               disabled={loading}
             >
               <option value="">Select type...</option>
@@ -318,7 +372,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onClose, onAppointmen
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading || !formData.patientId}
           >
-            {loading ? 'Scheduling...' : 'Schedule Appointment'}
+            {loading ? (appointment ? 'Updating...' : 'Scheduling...') : (appointment ? 'Update Appointment' : 'Schedule Appointment')}
           </button>
         </div>
       </form>
