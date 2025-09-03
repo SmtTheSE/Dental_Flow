@@ -1,5 +1,5 @@
 // src/pages/TreatmentPlanning.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, Filter, Calendar, User, Clock, DollarSign, AlertTriangle, Edit, Trash2, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import treatmentService, { Treatment, PatientTreatment, CreatePatientTreatmentRequest, CreateTreatmentRequest, UpdatePatientTreatmentRequest } from '../services/treatmentService';
@@ -45,6 +45,8 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
     duration: 30,
     category: 'General'
   });
+  
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Check authentication status
   useEffect(() => {
@@ -89,6 +91,18 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
 
     loadData();
   }, [selectedPatient, authError]);
+
+  // Filter treatments based on search term
+  const filteredTreatments = useMemo(() => {
+    if (!searchTerm) return treatments;
+    
+    const term = searchTerm.toLowerCase();
+    return treatments.filter(treatment => 
+      treatment.name.toLowerCase().includes(term) ||
+      treatment.description.toLowerCase().includes(term) ||
+      treatment.category.toLowerCase().includes(term)
+    );
+  }, [treatments, searchTerm]);
 
   const handleAddTreatment = (treatment: Treatment) => {
     if (authError) {
@@ -426,6 +440,8 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
                   <input
                     type="text"
                     placeholder="Search treatments..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
@@ -440,7 +456,7 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {treatments.map((treatment) => (
+              {filteredTreatments.map((treatment) => (
                 <div key={treatment.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                   <div className="flex justify-between items-start">
                     <div>
