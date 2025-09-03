@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, Calendar, User, Clock, DollarSign, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import treatmentService, { Treatment, PatientTreatment, CreatePatientTreatmentRequest } from '../services/treatmentService';
+import treatmentService, { Treatment, PatientTreatment, CreatePatientTreatmentRequest, CreateTreatmentRequest } from '../services/treatmentService';
 import { useAuth } from '../context/AuthContext';
 
 interface TreatmentPlanningProps {
@@ -11,13 +11,14 @@ interface TreatmentPlanningProps {
 
 const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }) => {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [patientTreatments, setPatientTreatments] = useState<PatientTreatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<boolean>(false);
   const [showAddTreatmentModal, setShowAddTreatmentModal] = useState(false);
+  const [showCreateTreatmentModal, setShowCreateTreatmentModal] = useState(false);
   const [selectedTreatment, setSelectedTreatment] = useState<Treatment | null>(null);
   const [newPatientTreatment, setNewPatientTreatment] = useState<CreatePatientTreatmentRequest>({
     patientId: selectedPatient?.id || 0,
@@ -26,6 +27,14 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
     priority: 'normal',
     startDate: new Date().toISOString().split('T')[0],
     notes: ''
+  });
+  
+  const [newTreatment, setNewTreatment] = useState<CreateTreatmentRequest>({
+    name: '',
+    description: '',
+    cost: 0,
+    duration: 30,
+    category: 'General'
   });
 
   // Check authentication status
@@ -101,11 +110,30 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
     setSelectedTreatment(null);
   };
 
+  const handleCloseCreateModal = () => {
+    setShowCreateTreatmentModal(false);
+    setNewTreatment({
+      name: '',
+      description: '',
+      cost: 0,
+      duration: 30,
+      category: 'General'
+    });
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setNewPatientTreatment(prev => ({
       ...prev,
       [name]: value
+    }));
+  };
+
+  const handleTreatmentInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setNewTreatment(prev => ({
+      ...prev,
+      [name]: name === 'cost' || name === 'duration' ? Number(value) : value
     }));
   };
 
@@ -128,6 +156,44 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
         setError('Authentication failed. Please log in again.');
       } else {
         alert(err.message || 'Failed to create patient treatment');
+      }
+    }
+  };
+
+  const handleCreateTreatment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (authError) {
+      alert('Please log in to create treatments.');
+      return;
+    }
+    
+    if (!newTreatment.name.trim()) {
+      alert('Please enter a treatment name.');
+      return;
+    }
+    
+    if (newTreatment.cost < 0) {
+      alert('Cost must be a positive number.');
+      return;
+    }
+    
+    if (newTreatment.duration <= 0) {
+      alert('Duration must be greater than 0.');
+      return;
+    }
+    
+    try {
+      const createdTreatment = await treatmentService.createTreatment(newTreatment);
+      setTreatments(prev => [createdTreatment, ...prev]);
+      handleCloseCreateModal();
+    } catch (err: any) {
+      console.error('Error creating treatment:', err);
+      if (err.message.includes('Authentication')) {
+        setAuthError(true);
+        setError('Authentication failed. Please log in again.');
+      } else {
+        alert(err.message || 'Failed to create treatment');
       }
     }
   };
@@ -239,13 +305,22 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">Treatment Library</h2>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Search treatments..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+              <div className="flex space-x-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Search treatments..."
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowCreateTreatmentModal(true)}
+                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  New Treatment
+                </button>
               </div>
             </div>
 
@@ -443,6 +518,107 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     Add Treatment
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Treatment Modal */}
+      {showCreateTreatmentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Create New Treatment</h2>
+              
+              <form onSubmit={handleCreateTreatment}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Treatment Name</label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={newTreatment.name}
+                      onChange={handleTreatmentInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea
+                      name="description"
+                      value={newTreatment.description}
+                      onChange={handleTreatmentInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      rows={3}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cost ($)</label>
+                      <input
+                        type="number"
+                        name="cost"
+                        min="0"
+                        step="0.01"
+                        value={newTreatment.cost}
+                        onChange={handleTreatmentInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+                      <input
+                        type="number"
+                        name="duration"
+                        min="1"
+                        value={newTreatment.duration}
+                        onChange={handleTreatmentInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                      <select
+                        name="category"
+                        value={newTreatment.category}
+                        onChange={handleTreatmentInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="General">General</option>
+                        <option value="Cleaning">Cleaning</option>
+                        <option value="Filling">Filling</option>
+                        <option value="Crown">Crown</option>
+                        <option value="Root Canal">Root Canal</option>
+                        <option value="Surgery">Surgery</option>
+                        <option value="Orthodontics">Orthodontics</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseCreateModal}
+                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Create Treatment
                   </button>
                 </div>
               </form>
