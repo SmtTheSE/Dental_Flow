@@ -12,6 +12,8 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showAddPatientModal, setShowAddPatientModal] = useState(false);
+  const [showUpdatePatientModal, setShowUpdatePatientModal] = useState(false);
+  const [selectedPatient, setSelectedPatientState] = useState<Patient | null>(null);
   const [newPatient, setNewPatient] = useState<Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>>({
     firstName: '',
     lastName: '',
@@ -137,6 +139,68 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
     }
   };
 
+  const handleDeletePatient = async (id: number) => {
+    try {
+      await patientService.deletePatient(id);
+      setPatients(prev => prev.filter(patient => patient.id !== id));
+    } catch (err) {
+      console.error('Error deleting patient:', err);
+      alert('Failed to delete patient');
+    }
+  };
+
+  const handleUpdatePatient = (patient: Patient) => {
+    setSelectedPatientState(patient);
+    setNewPatient({
+      firstName: patient.firstName,
+      lastName: patient.lastName,
+      dateOfBirth: patient.dateOfBirth,
+      phone: patient.phone,
+      email: patient.email,
+      address: patient.address,
+      emergencyContact: patient.emergencyContact,
+      insuranceProvider: patient.insuranceProvider,
+      insurancePolicyNumber: patient.insurancePolicyNumber,
+      medicalHistory: patient.medicalHistory,
+      riskLevel: patient.riskLevel
+    });
+    setShowUpdatePatientModal(true);
+  };
+
+  const handleUpdateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPatient) return;
+    
+    try {
+      const patientToUpdate = {
+        firstName: newPatient.firstName,
+        lastName: newPatient.lastName,
+        dateOfBirth: newPatient.dateOfBirth,
+        phone: newPatient.phone,
+        email: newPatient.email,
+        address: newPatient.address,
+        emergencyContact: newPatient.emergencyContact,
+        insuranceProvider: newPatient.insuranceProvider,
+        insurancePolicyNumber: newPatient.insurancePolicyNumber,
+        medicalHistory: newPatient.medicalHistory,
+        riskLevel: newPatient.riskLevel
+      };
+      
+      const updatedPatient = await patientService.updatePatient(selectedPatient.id, patientToUpdate);
+      setPatients(prev => prev.map(p => p.id === selectedPatient.id ? updatedPatient : p));
+      setShowUpdatePatientModal(false);
+      setSelectedPatientState(null);
+    } catch (err) {
+      console.error('Error updating patient:', err);
+      alert('Failed to update patient');
+    }
+  };
+
+  const handleCloseUpdateModal = () => {
+    setShowUpdatePatientModal(false);
+    setSelectedPatientState(null);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -218,6 +282,8 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
               key={patient.id}
               patient={patient}
               onSelect={() => setSelectedPatient(patient)}
+              onDelete={handleDeletePatient}
+              onUpdate={handleUpdatePatient}
             />
           ))
         ) : (
@@ -392,6 +458,173 @@ const Patients: React.FC<PatientsProps> = ({ setSelectedPatient }) => {
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     Add Patient
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Patient Modal */}
+      {showUpdatePatientModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Update Patient</h2>
+              <form onSubmit={handleUpdateSubmit}>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                      <input
+                        type="text"
+                        name="firstName"
+                        value={newPatient.firstName}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                      <input
+                        type="text"
+                        name="lastName"
+                        value={newPatient.lastName}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        name="dateOfBirth"
+                        value={newPatient.dateOfBirth}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="text"
+                        name="phone"
+                        value={newPatient.phone}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={newPatient.email}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                    <textarea
+                      name="address"
+                      value={newPatient.address}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      rows={2}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact</label>
+                      <input
+                        type="text"
+                        name="emergencyContact"
+                        value={newPatient.emergencyContact}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
+                      <select
+                        name="riskLevel"
+                        value={newPatient.riskLevel}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Insurance Provider</label>
+                      <input
+                        type="text"
+                        name="insuranceProvider"
+                        value={newPatient.insuranceProvider}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Policy Number</label>
+                      <input
+                        type="text"
+                        name="insurancePolicyNumber"
+                        value={newPatient.insurancePolicyNumber}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Medical History</label>
+                    <textarea
+                      name="medicalHistory"
+                      value={newPatient.medicalHistory}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseUpdateModal}
+                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Update Patient
                   </button>
                 </div>
               </form>

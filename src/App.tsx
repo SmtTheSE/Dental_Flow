@@ -34,7 +34,15 @@ const AppLayout: React.FC = () => {
       '/analytics': 'analytics'
     };
     
-    const page = pathToPageMap[location.pathname] || 'dashboard';
+    // Check if the current path starts with /patients/ (for patient detail pages)
+    let page;
+    if (location.pathname.startsWith('/patients/')) {
+      // For patient detail pages, keep the 'patients' menu item active
+      page = 'patients';
+    } else {
+      page = pathToPageMap[location.pathname] || 'dashboard';
+    }
+    
     setCurrentPage(page);
   }, [location.pathname]);
 

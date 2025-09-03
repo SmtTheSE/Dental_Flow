@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Phone, Mail, Calendar, FileText, Pill, CreditCard } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, FileText } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DentalChart from '../components/patients/DentalChart';
-import TreatmentHistory from '../components/patients/TreatmentHistory';
-import MedicalHistory from '../components/patients/MedicalHistory';
 import patientService, { Patient } from '../services/patientService';
+import treatmentService, { PatientTreatment } from '../services/treatmentService';
+import { Calendar as CalendarIcon, Clock, CheckCircle } from 'lucide-react';
 
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [patientTreatments, setPatientTreatments] = useState<PatientTreatment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [treatmentsLoading, setTreatmentsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -38,6 +40,26 @@ const PatientDetail: React.FC = () => {
     fetchPatient();
   }, [id]);
 
+  useEffect(() => {
+    const fetchPatientTreatments = async () => {
+      if (!id) return;
+
+      try {
+        setTreatmentsLoading(true);
+        const treatmentsData = await treatmentService.getPatientTreatmentsByPatientId(parseInt(id, 10));
+        setPatientTreatments(treatmentsData);
+      } catch (err) {
+        console.error('Error fetching patient treatments:', err);
+      } finally {
+        setTreatmentsLoading(false);
+      }
+    };
+
+    if (activeTab === 'treatment-history' && id) {
+      fetchPatientTreatments();
+    }
+  }, [activeTab, id]);
+
   const calculateAge = (dateOfBirth: string) => {
     if (!dateOfBirth) return 'N/A';
     const dob = new Date(dateOfBirth);
@@ -56,9 +78,17 @@ const PatientDetail: React.FC = () => {
     { id: 'overview', label: 'Overview' },
     { id: 'dental-chart', label: 'Dental Chart' },
     { id: 'treatment-history', label: 'Treatment History' },
-    { id: 'medical-history', label: 'Medical History' },
-    { id: 'billing', label: 'Billing' }
+    { id: 'medical-history', label: 'Medical History' }
   ];
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'in-progress': return <Clock className="w-5 h-5 text-blue-500" />;
+      case 'pending': return <Clock className="w-5 h-5 text-yellow-500" />;
+      default: return <Clock className="w-5 h-5 text-gray-500" />;
+    }
+  };
 
   if (loading) {
     return (
@@ -221,12 +251,77 @@ const PatientDetail: React.FC = () => {
           )}
           
           {activeTab === 'dental-chart' && <DentalChart />}
-          {activeTab === 'treatment-history' && <TreatmentHistory />}
-          {activeTab === 'medical-history' && <MedicalHistory />}
-          {activeTab === 'billing' && (
-            <div className="text-center py-8">
-              <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">Billing information will be displayed here</p>
+          {activeTab === 'treatment-history' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Treatment History</h3>
+                <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                  Export Record
+                </button>
+              </div>
+
+              {treatmentsLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                </div>
+              ) : patientTreatments.length > 0 ? (
+                <div className="space-y-4">
+                  {patientTreatments.map((treatment) => (
+                    <div 
+                      key={treatment.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all duration-200"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-start space-x-3">
+                          {getStatusIcon(treatment.status)}
+                          <div>
+                            <h4 className="font-medium text-gray-900">{treatment.treatmentName}</h4>
+                            <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">
+                              <div className="flex items-center space-x-1">
+                                <CalendarIcon className="w-4 h-4" />
+                                <span>{treatment.startDate ? new Date(treatment.startDate).toLocaleDateString() : 'N/A'}</span>
+                              </div>
+                              <span>•</span>
+                              <span>{treatment.dentistName || 'Not assigned'}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            treatment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            treatment.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
+                            treatment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {treatment.status.charAt(0).toUpperCase() + treatment.status.slice(1)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-sm text-gray-700">{treatment.notes || 'No notes provided'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No treatment history found for this patient</p>
+                </div>
+              )}
+            </div>
+          )}
+          {activeTab === 'medical-history' && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900">Medical History</h3>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+                {patient.medicalHistory ? (
+                  <p className="text-gray-700 whitespace-pre-line">{patient.medicalHistory}</p>
+                ) : (
+                  <p className="text-gray-500">No medical history recorded for this patient</p>
+                )}
+              </div>
             </div>
           )}
         </div>
