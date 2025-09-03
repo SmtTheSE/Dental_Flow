@@ -63,7 +63,8 @@ class AppointmentService {
         `${API_BASE_URL}/api/appointments/today`,
         this.getAuthHeaders()
       );
-      return response.data;
+      // Ensure we always return an array, even if we get null
+      return response.data || [];
     } catch (error) {
       console.error('Error fetching today\'s appointments:', error);
       throw error;
@@ -84,7 +85,8 @@ class AppointmentService {
 
       const url = `${API_BASE_URL}/api/appointments?${params.toString()}`;
       const response = await axios.get<Appointment[]>(url, this.getAuthHeaders());
-      return response.data;
+      // Ensure we always return an array, even if we get null
+      return response.data || [];
     } catch (error) {
       console.error('Error fetching appointments:', error);
       throw error;
@@ -93,7 +95,9 @@ class AppointmentService {
 
   // Alias for getAppointments to maintain backward compatibility
   async getAllAppointments(date?: string): Promise<Appointment[]> {
-    return this.getAppointments(date);
+    const response = await this.getAppointments(date);
+    // Ensure we always return an array, even if we get null
+    return response || [];
   }
 
   // Get a single appointment by ID

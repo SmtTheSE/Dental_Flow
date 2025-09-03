@@ -108,6 +108,11 @@ const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
 
   // Get appointments for a specific date
   const getAppointmentsForDate = (date: Date): Appointment[] => {
+    // Handle case where appointments might be null
+    if (!appointments) {
+      return [];
+    }
+    
     const dateString = formatDate(date);
     return appointments.filter(appt => normalizeDate(appt.appointmentDate) === dateString);
   };
@@ -120,10 +125,12 @@ const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
       
       // Fetch all appointments
       const allAppointments = await appointmentService.getAppointments();
-      setAppointments(allAppointments);
+      // Ensure we always have an array, even if the API returns null
+      setAppointments(allAppointments || []);
     } catch (err) {
       console.error('Error fetching appointments:', err);
       setError('Failed to load appointments');
+      // Set to empty array on error to prevent null issues
       setAppointments([]);
     } finally {
       setLoading(false);

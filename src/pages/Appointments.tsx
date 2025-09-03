@@ -41,26 +41,29 @@ const Appointments: React.FC = () => {
       // Fetch all appointments
       const allAppointments = await appointmentService.getAllAppointments();
       
+      // Ensure we have an array to work with
+      const appointments = allAppointments || [];
+      
       // Calculate today's appointments
       const today = new Date().toISOString().split('T')[0];
-      const todayCount = allAppointments.filter(appt => 
+      const todayCount = appointments.filter(appt => 
         appt.appointmentDate === today
       ).length;
       
       // Calculate this week's appointments
       const weekRange = getWeekRange();
-      const thisWeekCount = allAppointments.filter(appt => {
+      const thisWeekCount = appointments.filter(appt => {
         const apptDate = appt.appointmentDate;
         return apptDate >= weekRange.start && apptDate <= weekRange.end;
       }).length;
       
       // Calculate pending appointments
-      const pendingCount = allAppointments.filter(appt => 
+      const pendingCount = appointments.filter(appt => 
         appt.status === 'scheduled'
       ).length;
       
       // Calculate completed appointments
-      const completedCount = allAppointments.filter(appt => 
+      const completedCount = appointments.filter(appt => 
         appt.status === 'completed'
       ).length;
       

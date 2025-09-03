@@ -37,6 +37,11 @@ func GetTodaysAppointments(c *gin.Context) {
 		return
 	}
 
+	// Ensure we always return an array, even if empty
+	if appointments == nil {
+		appointments = []models.Appointment{}
+	}
+
 	c.JSON(http.StatusOK, appointments)
 }
 
@@ -88,6 +93,11 @@ func GetAppointments(c *gin.Context) {
 		log.Printf("Error retrieving appointments: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve appointments", "details": err.Error()})
 		return
+	}
+
+	// Ensure we always return an array, even if empty
+	if appointments == nil {
+		appointments = []models.Appointment{}
 	}
 
 	c.JSON(http.StatusOK, appointments)
