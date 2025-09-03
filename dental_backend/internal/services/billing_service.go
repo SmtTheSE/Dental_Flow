@@ -241,10 +241,10 @@ func (s *BillingService) UpdateInvoice(id int, req models.UpdateInvoiceRequest) 
 	// Retrieve the updated invoice
 	var updatedInvoice models.Invoice
 	err = s.db.QueryRow(`
-		SELECT i.id, i.patient_id, p.name as patient_name, i.amount, i.status, 
-		       i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
+		SELECT i.id, i.patient_id, COALESCE(p.first_name || ' ' || p.last_name, 'Unknown Patient') as patient_name, 
+		       i.amount, i.status, i.due_date, i.issued_date, i.payment_method, i.notes, i.created_at, i.updated_at
 		FROM invoices i
-		JOIN patients p ON i.patient_id = p.id
+		LEFT JOIN patients p ON i.patient_id = p.id
 		WHERE i.id = $1`, id).Scan(
 		&updatedInvoice.ID, &updatedInvoice.PatientID, &updatedInvoice.PatientName,
 		&updatedInvoice.Amount, &updatedInvoice.Status, &updatedInvoice.DueDate,

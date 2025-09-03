@@ -33,13 +33,31 @@ const Billing: React.FC = () => {
   
   // Create invoice state
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientLoading, setPatientLoading] = useState(false);
   const [createInvoiceLoading, setCreateInvoiceLoading] = useState(false);
+  const [editInvoiceLoading, setEditInvoiceLoading] = useState(false);
+  const [deleteInvoiceLoading, setDeleteInvoiceLoading] = useState(false);
   const [createInvoiceError, setCreateInvoiceError] = useState<string | null>(null);
+  const [editInvoiceError, setEditInvoiceError] = useState<string | null>(null);
+  const [deleteInvoiceError, setDeleteInvoiceError] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
+    patientId: 0,
+    amount: 0,
+    status: 'pending' as 'pending' | 'paid' | 'overdue',
+    dueDate: '',
+    issuedDate: '',
+    paymentMethod: '',
+    notes: ''
+  });
+
+  // Edit form state
+  const [editFormData, setEditFormData] = useState({
     patientId: 0,
     amount: 0,
     status: 'pending' as 'pending' | 'paid' | 'overdue',
@@ -138,6 +156,50 @@ const Billing: React.FC = () => {
     window.location.reload();
   };
 
+  const handleEditInvoice = (invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    setEditFormData({
+      patientId: invoice.patientId,
+      amount: invoice.amount,
+      status: invoice.status,
+      dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().split('T')[0] : '',
+      issuedDate: invoice.issuedDate ? new Date(invoice.issuedDate).toISOString().split('T')[0] : '',
+      paymentMethod: invoice.paymentMethod || '',
+      notes: invoice.notes || ''
+    });
+    setShowEditModal(true);
+  };
+
+  const handleDeleteInvoice = (invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteInvoice = async () => {
+    if (!selectedInvoice) return;
+    
+    try {
+      setDeleteInvoiceLoading(true);
+      setDeleteInvoiceError(null);
+      
+      await billingService.deleteInvoice(selectedInvoice.id);
+      
+      // Remove deleted invoice from the list
+      setInvoices(prev => prev.filter(invoice => invoice.id !== selectedInvoice.id));
+      
+      // Remove from recent transactions
+      setRecentTransactions(prev => prev.filter(transaction => transaction.id !== selectedInvoice.id));
+      
+      setShowDeleteModal(false);
+      setSelectedInvoice(null);
+    } catch (err: any) {
+      console.error('Error deleting invoice:', err);
+      setDeleteInvoiceError(err.message || 'Failed to delete invoice. Please try again.');
+    } finally {
+      setDeleteInvoiceLoading(false);
+    }
+  };
+
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -165,7 +227,7 @@ const Billing: React.FC = () => {
         amount: formData.amount,
         status: formData.status,
         dueDate: formData.dueDate,
-        issuedDate: formData.issuedDate || new Date().toISOString().split('T')[0],
+        issuedDate: formData.issuedDate, // Already in correct format
         paymentMethod: formData.paymentMethod,
         notes: formData.notes
       };
@@ -205,6 +267,68 @@ const Billing: React.FC = () => {
       setCreateInvoiceError(err.message || 'Failed to create invoice. Please try again.');
     } finally {
       setCreateInvoiceLoading(false);
+    }
+  };
+
+  const handleUpdateInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedInvoice) return;
+    
+    if (editFormData.patientId === 0) {
+      setEditInvoiceError('Please select a patient');
+      return;
+    }
+    
+    if (editFormData.amount <= 0) {
+      setEditInvoiceError('Please enter a valid amount');
+      return;
+    }
+    
+    if (!editFormData.dueDate) {
+      setEditInvoiceError('Please select a due date');
+      return;
+    }
+    
+    try {
+      setEditInvoiceLoading(true);
+      setEditInvoiceError(null);
+      
+      const invoiceData = {
+        patientId: editFormData.patientId,
+        amount: editFormData.amount,
+        status: editFormData.status,
+        dueDate: editFormData.dueDate, // Already in correct format
+        issuedDate: editFormData.issuedDate, // Already in correct format
+        paymentMethod: editFormData.paymentMethod,
+        notes: editFormData.notes
+      };
+      
+      const updatedInvoice = await billingService.updateInvoice(selectedInvoice.id, invoiceData);
+      
+      // Update invoice in the list
+      setInvoices(prev => prev.map(invoice => 
+        invoice.id === selectedInvoice.id ? updatedInvoice : invoice
+      ));
+      
+      // Update in recent transactions
+      setRecentTransactions(prev => prev.map(transaction => 
+        transaction.id === selectedInvoice.id ? {
+          ...transaction,
+          patient: updatedInvoice.patientName,
+          amount: updatedInvoice.amount,
+          method: updatedInvoice.paymentMethod || 'Not specified',
+          status: updatedInvoice.status as 'pending' | 'paid' | 'overdue'
+        } : transaction
+      ));
+      
+      setShowEditModal(false);
+      setSelectedInvoice(null);
+    } catch (err: any) {
+      console.error('Error updating invoice:', err);
+      setEditInvoiceError(err.message || 'Failed to update invoice. Please try again.');
+    } finally {
+      setEditInvoiceLoading(false);
     }
   };
 
@@ -474,13 +598,27 @@ const Billing: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {invoice && (
-                              <button 
-                                onClick={() => exportInvoiceAsPDF(invoice)}
-                                className="flex items-center text-teal-600 hover:text-teal-900"
-                              >
-                                <Download className="w-4 h-4 mr-1" />
-                                Export
-                              </button>
+                              <>
+                                <button 
+                                  onClick={() => handleEditInvoice(invoice)}
+                                  className="flex items-center text-blue-600 hover:text-blue-900 mr-3"
+                                >
+                                  Edit
+                                </button>
+                                <button 
+                                  onClick={() => exportInvoiceAsPDF(invoice)}
+                                  className="flex items-center text-teal-600 hover:text-teal-900 mr-3"
+                                >
+                                  <Download className="w-4 h-4 mr-1" />
+                                  Export
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteInvoice(invoice)}
+                                  className="flex items-center text-red-600 hover:text-red-900"
+                                >
+                                  Delete
+                                </button>
+                              </>
                             )}
                           </td>
                         </tr>
@@ -545,11 +683,23 @@ const Billing: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <button 
+                            onClick={() => handleEditInvoice(invoice)}
+                            className="flex items-center text-blue-600 hover:text-blue-900 mr-3"
+                          >
+                            Edit
+                          </button>
+                          <button 
                             onClick={() => exportInvoiceAsPDF(invoice)}
-                            className="flex items-center text-teal-600 hover:text-teal-900"
+                            className="flex items-center text-teal-600 hover:text-teal-900 mr-3"
                           >
                             <Download className="w-4 h-4 mr-1" />
                             Export
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteInvoice(invoice)}
+                            className="flex items-center text-red-600 hover:text-red-900"
+                          >
+                            Delete
                           </button>
                         </td>
                       </tr>
@@ -581,6 +731,232 @@ const Billing: React.FC = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Financial Reports</h3>
           <p className="text-gray-600">Financial reporting functionality would be implemented here.</p>
+        </div>
+      )}
+
+      {/* Edit Invoice Modal */}
+      {showEditModal && selectedInvoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">Edit Invoice #{selectedInvoice.id}</h3>
+              <button 
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleUpdateInvoice}>
+              <div className="px-6 py-4 space-y-4">
+                {editInvoiceError && (
+                  <div className="bg-red-50 border-l-4 border-red-500 p-4">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <AlertTriangle className="h-5 w-5 text-red-400" />
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-red-700">
+                          {editInvoiceError}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div>
+                  <label htmlFor="editPatientId" className="block text-sm font-medium text-gray-700">
+                    Patient
+                  </label>
+                  <div className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 bg-gray-50 sm:text-sm">
+                    {selectedInvoice?.patientName}
+                  </div>
+                  <input 
+                    type="hidden" 
+                    name="patientId" 
+                    value={editFormData.patientId} 
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="editAmount" className="block text-sm font-medium text-gray-700">
+                    Amount ($)
+                  </label>
+                  <input
+                    type="number"
+                    id="editAmount"
+                    name="amount"
+                    min="0"
+                    step="0.01"
+                    value={editFormData.amount || ''}
+                    onChange={(e) => setEditFormData({...editFormData, amount: parseFloat(e.target.value) || 0})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="editStatus" className="block text-sm font-medium text-gray-700">
+                    Status
+                  </label>
+                  <select
+                    id="editStatus"
+                    name="status"
+                    value={editFormData.status}
+                    onChange={(e) => setEditFormData({...editFormData, status: e.target.value as any})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="overdue">Overdue</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label htmlFor="editIssuedDate" className="block text-sm font-medium text-gray-700">
+                    Issue Date
+                  </label>
+                  <input
+                    type="date"
+                    id="editIssuedDate"
+                    name="issuedDate"
+                    value={editFormData.issuedDate}
+                    onChange={(e) => setEditFormData({...editFormData, issuedDate: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="editDueDate" className="block text-sm font-medium text-gray-700">
+                    Due Date
+                  </label>
+                  <input
+                    type="date"
+                    id="editDueDate"
+                    name="dueDate"
+                    value={editFormData.dueDate}
+                    onChange={(e) => setEditFormData({...editFormData, dueDate: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="editPaymentMethod" className="block text-sm font-medium text-gray-700">
+                    Payment Method
+                  </label>
+                  <select
+                    id="editPaymentMethod"
+                    name="paymentMethod"
+                    value={editFormData.paymentMethod}
+                    onChange={(e) => setEditFormData({...editFormData, paymentMethod: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                  >
+                    <option value="">Select payment method</option>
+                    <option value="cash">Cash</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="debit_card">Debit Card</option>
+                    <option value="insurance">Insurance</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label htmlFor="editNotes" className="block text-sm font-medium text-gray-700">
+                    Notes
+                  </label>
+                  <textarea
+                    id="editNotes"
+                    name="notes"
+                    rows={3}
+                    value={editFormData.notes}
+                    onChange={(e) => setEditFormData({...editFormData, notes: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                  />
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editInvoiceLoading}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 disabled:opacity-50"
+                >
+                  {editInvoiceLoading ? 'Updating...' : 'Update Invoice'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Invoice Confirmation Modal */}
+      {showDeleteModal && selectedInvoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">Delete Invoice</h3>
+              <button 
+                onClick={() => setShowDeleteModal(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="px-6 py-4">
+              <div className="flex items-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-red-500 mr-2" />
+                <p className="text-sm font-medium text-gray-900">Are you sure?</p>
+              </div>
+              
+              <p className="text-sm text-gray-500 mb-4">
+                Are you sure you want to delete invoice #{selectedInvoice.id} for {selectedInvoice.patientName}? 
+                This action cannot be undone.
+              </p>
+              
+              {deleteInvoiceError && (
+                <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <AlertTriangle className="h-5 w-5 text-red-400" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-red-700">
+                        {deleteInvoiceError}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteInvoice}
+                disabled={deleteInvoiceLoading}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+              >
+                {deleteInvoiceLoading ? 'Deleting...' : 'Delete Invoice'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

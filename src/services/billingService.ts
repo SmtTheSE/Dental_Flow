@@ -129,8 +129,8 @@ class BillingService {
       if (invoice.patientId !== undefined) invoiceData.patient_id = invoice.patientId;
       if (invoice.amount !== undefined) invoiceData.amount = invoice.amount;
       if (invoice.status !== undefined) invoiceData.status = invoice.status;
-      if (invoice.dueDate !== undefined) invoiceData.due_date = invoice.dueDate;
-      if (invoice.issuedDate !== undefined) invoiceData.issued_date = invoice.issuedDate;
+      if (invoice.dueDate !== undefined) invoiceData.due_date = invoice.dueDate; // Already in correct format
+      if (invoice.issuedDate !== undefined) invoiceData.issued_date = invoice.issuedDate; // Already in correct format
       if (invoice.paymentMethod !== undefined) invoiceData.payment_method = invoice.paymentMethod;
       if (invoice.notes !== undefined) invoiceData.notes = invoice.notes;
 
