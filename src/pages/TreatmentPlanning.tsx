@@ -1,8 +1,8 @@
 // src/pages/TreatmentPlanning.tsx
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Calendar, User, Clock, DollarSign, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Filter, Calendar, User, Clock, DollarSign, AlertTriangle, Edit, Trash2, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import treatmentService, { Treatment, PatientTreatment, CreatePatientTreatmentRequest, CreateTreatmentRequest } from '../services/treatmentService';
+import treatmentService, { Treatment, PatientTreatment, CreatePatientTreatmentRequest, CreateTreatmentRequest, UpdatePatientTreatmentRequest } from '../services/treatmentService';
 import { useAuth } from '../context/AuthContext';
 
 interface TreatmentPlanningProps {
@@ -19,7 +19,9 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
   const [authError, setAuthError] = useState<boolean>(false);
   const [showAddTreatmentModal, setShowAddTreatmentModal] = useState(false);
   const [showCreateTreatmentModal, setShowCreateTreatmentModal] = useState(false);
+  const [showEditTreatmentModal, setShowEditTreatmentModal] = useState(false);
   const [selectedTreatment, setSelectedTreatment] = useState<Treatment | null>(null);
+  const [selectedPatientTreatment, setSelectedPatientTreatment] = useState<PatientTreatment | null>(null);
   const [newPatientTreatment, setNewPatientTreatment] = useState<CreatePatientTreatmentRequest>({
     patientId: selectedPatient?.id || 0,
     treatmentId: 0,
@@ -29,6 +31,13 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
     notes: ''
   });
   
+  const [editPatientTreatment, setEditPatientTreatment] = useState<UpdatePatientTreatmentRequest>({
+    status: 'pending',
+    priority: 'normal',
+    startDate: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+
   const [newTreatment, setNewTreatment] = useState<CreateTreatmentRequest>({
     name: '',
     description: '',
@@ -105,9 +114,30 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
     setShowAddTreatmentModal(true);
   };
 
+  const handleEditPatientTreatment = (patientTreatment: PatientTreatment) => {
+    if (authError) {
+      alert('Please log in to edit treatments.');
+      return;
+    }
+    
+    setSelectedPatientTreatment(patientTreatment);
+    setEditPatientTreatment({
+      status: patientTreatment.status,
+      priority: patientTreatment.priority,
+      startDate: patientTreatment.startDate,
+      notes: patientTreatment.notes
+    });
+    setShowEditTreatmentModal(true);
+  };
+
   const handleCloseModal = () => {
     setShowAddTreatmentModal(false);
     setSelectedTreatment(null);
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditTreatmentModal(false);
+    setSelectedPatientTreatment(null);
   };
 
   const handleCloseCreateModal = () => {
@@ -124,6 +154,14 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setNewPatientTreatment(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setEditPatientTreatment(prev => ({
       ...prev,
       [name]: value
     }));
@@ -156,6 +194,83 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
         setError('Authentication failed. Please log in again.');
       } else {
         alert(err.message || 'Failed to create patient treatment');
+      }
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (authError || !selectedPatientTreatment) {
+      alert('Please log in to edit treatments.');
+      return;
+    }
+    
+    try {
+      const updatedTreatment = await treatmentService.updatePatientTreatment(selectedPatientTreatment.id, editPatientTreatment);
+      setPatientTreatments(prev => prev.map(t => t.id === updatedTreatment.id ? updatedTreatment : t));
+      handleCloseEditModal();
+    } catch (err: any) {
+      console.error('Error updating patient treatment:', err);
+      if (err.message.includes('Authentication')) {
+        setAuthError(true);
+        setError('Authentication failed. Please log in again.');
+      } else {
+        alert(err.message || 'Failed to update patient treatment');
+      }
+    }
+  };
+
+  const handleDeleteTreatment = async (id: number) => {
+    if (authError) {
+      alert('Please log in to delete treatments.');
+      return;
+    }
+    
+    if (!window.confirm('Are you sure you want to delete this treatment?')) {
+      return;
+    }
+    
+    try {
+      await treatmentService.deletePatientTreatment(id);
+      setPatientTreatments(prev => prev.filter(t => t.id !== id));
+    } catch (err: any) {
+      console.error('Error deleting patient treatment:', err);
+      if (err.message.includes('Authentication')) {
+        setAuthError(true);
+        setError('Authentication failed. Please log in again.');
+      } else {
+        alert(err.message || 'Failed to delete patient treatment');
+      }
+    }
+  };
+
+  const handleSetComplete = async (id: number) => {
+    if (authError) {
+      alert('Please log in to update treatments.');
+      return;
+    }
+    
+    try {
+      // Find the current treatment to get its priority value
+      const currentTreatment = patientTreatments.find(t => t.id === id);
+      if (!currentTreatment) {
+        alert('Treatment not found.');
+        return;
+      }
+      
+      const updatedTreatment = await treatmentService.updatePatientTreatment(id, { 
+        status: 'completed',
+        priority: currentTreatment.priority // Include the existing priority to pass validation
+      });
+      setPatientTreatments(prev => prev.map(t => t.id === updatedTreatment.id ? updatedTreatment : t));
+    } catch (err: any) {
+      console.error('Error updating patient treatment status:', err);
+      if (err.message.includes('Authentication')) {
+        setAuthError(true);
+        setError('Authentication failed. Please log in again.');
+      } else {
+        alert(err.message || 'Failed to update patient treatment status');
       }
     }
   };
@@ -393,6 +508,9 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Dentist
                       </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -420,6 +538,31 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {treatment.dentistName || 'Not assigned'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          {treatment.status !== 'completed' && (
+                            <button
+                              onClick={() => handleSetComplete(treatment.id)}
+                              className="text-green-600 hover:text-green-900 mr-3"
+                              title="Mark as Complete"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleEditPatientTreatment(treatment)}
+                            className="text-blue-600 hover:text-blue-900 mr-3"
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTreatment(treatment.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -518,6 +661,95 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     Add Treatment
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Treatment Modal */}
+      {showEditTreatmentModal && selectedPatientTreatment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Treatment for {selectedPatient?.firstName} {selectedPatient?.lastName}</h2>
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+                <h3 className="font-bold text-blue-900">{selectedPatientTreatment.treatmentName}</h3>
+                <div className="text-sm text-blue-800 mt-1">{selectedPatientTreatment.notes || 'No notes'}</div>
+              </div>
+              
+              <form onSubmit={handleEditSubmit}>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        name="startDate"
+                        value={editPatientTreatment.startDate}
+                        onChange={handleEditInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                      <select
+                        name="priority"
+                        value={editPatientTreatment.priority}
+                        onChange={handleEditInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                      name="status"
+                      value={editPatientTreatment.status}
+                      onChange={handleEditInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea
+                      name="notes"
+                      value={editPatientTreatment.notes}
+                      onChange={handleEditInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseEditModal}
+                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Update Treatment
                   </button>
                 </div>
               </form>
