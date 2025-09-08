@@ -285,15 +285,16 @@ func (s *TreatmentService) GetTreatmentQueueForDentist(dentistID int) ([]models.
 
 		// Handle null values
 		if dentistIDNull.Valid {
-			pt.DentistID = int(dentistIDNull.Int64)
+			dentistID := int(dentistIDNull.Int64)
+			pt.DentistID = &dentistID
 		}
 		
 		if completionDate.Valid {
-			pt.CompletionDate = completionDate.String
+			pt.CompletionDate = &completionDate.String
 		}
 		
 		if dentistName.Valid {
-			pt.DentistName = dentistName.String
+			pt.DentistName = &dentistName.String
 		}
 
 		treatments = append(treatments, pt)

@@ -40,7 +40,6 @@ func (s *AppointmentService) GetTodaysAppointments(dentistID int) ([]models.Appo
 	rows, err := s.db.Query(`
 		SELECT a.id, a.patient_id,
 		       p.first_name || ' ' || p.last_name as patient_name, 
-			   p.phone as patient_phone,
 		       a.appointment_date, a.start_time, a.status, a.notes, a.created_at, a.updated_at
 		FROM appointments a
 		JOIN patients p ON a.patient_id = p.id
@@ -56,7 +55,7 @@ func (s *AppointmentService) GetTodaysAppointments(dentistID int) ([]models.Appo
 	for rows.Next() {
 		var a models.Appointment
 		err := rows.Scan(
-			&a.ID, &a.PatientID, &a.PatientName, &a.PatientPhone,
+			&a.ID, &a.PatientID, &a.PatientName,
 			&a.AppointmentDate, &a.StartTime, &a.Status, &a.Notes,
 			&a.CreatedAt, &a.UpdatedAt,
 		)

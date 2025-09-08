@@ -17,6 +17,7 @@ import (
 
 	"dental_backend/internal/database"
 	"dental_backend/internal/handlers"
+	"dental_backend/internal/models"
 	"dental_backend/internal/services"
 )
 
@@ -215,7 +216,7 @@ func getDashboardStats(c *gin.Context) {
 	}
 
 	// Get today's appointments count
-	var todaysAppointments []interface{} // Using interface{} as placeholder
+	var todaysAppointments []models.Appointment
 	if dentistID > 0 {
 		todaysAppointments, err = appointmentService.GetTodaysAppointments(dentistID)
 	} else {
@@ -229,7 +230,7 @@ func getDashboardStats(c *gin.Context) {
 	}
 
 	// Get pending treatments count
-	var pendingTreatments []interface{} // Using interface{} as placeholder
+	var pendingTreatments []models.PatientTreatment
 	if dentistID > 0 {
 		pendingTreatments, err = treatmentService.GetTreatmentQueueForDentist(dentistID)
 	} else {
