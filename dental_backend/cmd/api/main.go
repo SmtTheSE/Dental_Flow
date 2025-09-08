@@ -195,8 +195,10 @@ func getDashboardStats(c *gin.Context) {
 	// Get database connection from the shared database package
 	db := database.GetDB()
 
-	// Create patient service
+	// Create services
 	patientService := services.NewPatientService(db)
+	appointmentService := services.NewAppointmentService(db)
+	treatmentService := services.NewTreatmentService(db)
 
 	// Get patient stats from service
 	patientStats, err := patientService.GetPatientStats()
@@ -205,11 +207,46 @@ func getDashboardStats(c *gin.Context) {
 		return
 	}
 
+	// Get dentist ID from context (0 if not a dentist or not logged in)
+	dentistID := 0
+	dentistIDValue, exists := c.Get("dentistID")
+	if exists {
+		dentistID, _ = dentistIDValue.(int)
+	}
+
+	// Get today's appointments count
+	var todaysAppointments []interface{} // Using interface{} as placeholder
+	if dentistID > 0 {
+		todaysAppointments, err = appointmentService.GetTodaysAppointments(dentistID)
+	} else {
+		// For non-dentists, get all appointments
+		todaysAppointments, err = appointmentService.GetTodaysAppointments(0)
+	}
+	
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve today's appointments"})
+		return
+	}
+
+	// Get pending treatments count
+	var pendingTreatments []interface{} // Using interface{} as placeholder
+	if dentistID > 0 {
+		pendingTreatments, err = treatmentService.GetTreatmentQueueForDentist(dentistID)
+	} else {
+		// For non-dentists, get all treatments
+		pendingTreatments, err = treatmentService.GetTreatmentQueue()
+	}
+	
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve pending treatments"})
+		return
+	}
+
 	// In a real implementation, this would fetch actual dashboard stats
 	c.JSON(http.StatusOK, gin.H{
-		"todayAppointments": 12,
+		"todayAppointments": len(todaysAppointments),
 		"activePatients":    patientStats.TotalPatients,
-		"pendingTreatments": 28,
+		"pendingTreatments": len(pendingTreatments),
 		"monthlyRevenue":    48950.00,
 	})
 }

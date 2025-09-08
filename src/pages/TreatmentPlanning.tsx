@@ -1,5 +1,5 @@
 // src/pages/TreatmentPlanning.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Search, Filter, Calendar, User, Clock, DollarSign, AlertTriangle, Edit, Trash2, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import treatmentService, { Treatment, PatientTreatment, CreatePatientTreatmentRequest, CreateTreatmentRequest, UpdatePatientTreatmentRequest } from '../services/treatmentService';
@@ -47,50 +47,65 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
   });
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [searching, setSearching] = useState(false);
+  
+  // For debouncing search requests
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check authentication status
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !token) {
       setAuthError(true);
-      setError('Please log in to access treatments.');
-      setLoading(false);
-      return;
     }
-    setAuthError(false);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, token]);
 
-  // Load treatments and patient treatments
-  useEffect(() => {
+  const loadData = async () => {
     if (authError) return;
+    
+    try {
+      setLoading(true);
+      const [treatmentsData, patientTreatmentsData] = await Promise.all([
+        treatmentService.getAllTreatments(),
+        selectedPatient ? treatmentService.getPatientTreatmentsByPatientId(selectedPatient.id) : Promise.resolve([])
+      ]);
+      
+      setTreatments(treatmentsData || []);
+      setPatientTreatments(selectedPatient ? (patientTreatmentsData || []) : []);
+      setError(null);
+    } catch (err) {
+      setError('Failed to load treatment data');
+      console.error('Error loading treatment data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const [treatmentsData, patientTreatmentsData] = await Promise.all([
-          treatmentService.getAllTreatments(),
-          selectedPatient ? treatmentService.getPatientTreatmentsByPatientId(selectedPatient.id) : Promise.resolve([])
-        ]);
-        
-        setTreatments(treatmentsData);
-        setPatientTreatments(patientTreatmentsData || []); // Ensure we always have an array
-      } catch (err: any) {
-        if (err.message.includes('Authentication')) {
-          setAuthError(true);
-          setError('Authentication failed. Please log in again.');
-        } else {
-          setError(err.message || 'Failed to load treatments');
-        }
-        setPatientTreatments([]); // Set to empty array on error
-        console.error('Error loading treatments:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+  useEffect(() => {
     loadData();
   }, [selectedPatient, authError]);
+
+  // Debounced search effect
+  useEffect(() => {
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Set new timeout
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearching(false);
+    }, 300); // 300ms delay
+    
+    // Set searching state immediately
+    setSearching(true);
+    
+    // Cleanup timeout on unmount or when dependencies change
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchTerm]);
 
   // Filter treatments based on search term
   const filteredTreatments = useMemo(() => {
@@ -442,8 +457,13 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
                     placeholder="Search treatments..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className={`pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${searching ? 'bg-gray-50' : ''}`}
                   />
+                  {searching && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowCreateTreatmentModal(true)}
@@ -549,7 +569,7 @@ const TreatmentPlanning: React.FC<TreatmentPlanningProps> = ({ selectedPatient }
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex items-center">
                             <Calendar className="w-4 h-4 mr-1" />
-                            {treatment.startDate}
+                            {treatment.startDate ? new Date(treatment.startDate).toLocaleDateString() : 'N/A'}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

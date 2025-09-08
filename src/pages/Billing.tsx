@@ -668,10 +668,14 @@ const Billing: React.FC = () => {
                           <div className="text-sm text-gray-900">${invoice.amount.toFixed(2)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{invoice.issuedDate}</div>
+                          <div className="text-sm text-gray-900">
+                            {invoice.issuedDate ? new Date(invoice.issuedDate).toLocaleDateString() : 'N/A'}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{invoice.dueDate}</div>
+                          <div className="text-sm text-gray-900">
+                            {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 

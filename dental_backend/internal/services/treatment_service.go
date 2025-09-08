@@ -248,6 +248,65 @@ func (s *TreatmentService) GetTreatmentQueue() ([]models.PatientTreatment, error
 	return treatments, nil
 }
 
+// GetTreatmentQueueForDentist retrieves all patient treatments with status "pending" or "in-progress" for a specific dentist
+func (s *TreatmentService) GetTreatmentQueueForDentist(dentistID int) ([]models.PatientTreatment, error) {
+	rows, err := s.db.Query(`
+		SELECT pt.id, pt.patient_id, pt.treatment_id, pt.dentist_id, p.first_name || ' ' || p.last_name as patient_name, 
+		       t.name as treatment_name, 
+		       CASE WHEN pt.dentist_id IS NOT NULL THEN u.first_name || ' ' || u.last_name ELSE NULL END as dentist_name,
+		       pt.status, pt.priority, pt.start_date, pt.completion_date, pt.notes, pt.created_at, pt.updated_at
+		FROM patient_treatments pt
+		JOIN patients p ON pt.patient_id = p.id
+		JOIN treatments t ON pt.treatment_id = t.id
+		LEFT JOIN users u ON pt.dentist_id = u.id
+		WHERE pt.status IN ('pending', 'in-progress') AND pt.dentist_id = $1
+		ORDER BY pt.priority DESC, pt.created_at ASC`, dentistID)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query treatment queue: %w", err)
+	}
+	defer rows.Close()
+
+	var treatments []models.PatientTreatment
+	for rows.Next() {
+		var pt models.PatientTreatment
+		var dentistIDNull sql.NullInt64
+		var completionDate sql.NullString
+		var dentistName sql.NullString
+
+		err := rows.Scan(
+			&pt.ID, &pt.PatientID, &pt.TreatmentID, &dentistIDNull, &pt.PatientName,
+			&pt.TreatmentName, &dentistName, &pt.Status, &pt.Priority,
+			&pt.StartDate, &completionDate, &pt.Notes, &pt.CreatedAt, &pt.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Handle null values
+		if dentistIDNull.Valid {
+			pt.DentistID = int(dentistIDNull.Int64)
+		}
+		
+		if completionDate.Valid {
+			pt.CompletionDate = completionDate.String
+		}
+		
+		if dentistName.Valid {
+			pt.DentistName = dentistName.String
+		}
+
+		treatments = append(treatments, pt)
+	}
+
+	// Check for errors that occurred during iteration
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return treatments, nil
+}
+
 // GetPatientTreatments retrieves all treatments for a specific patient
 func (s *TreatmentService) GetPatientTreatments(patientID int) ([]models.PatientTreatment, error) {
 	// First check if the patient exists

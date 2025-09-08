@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Clock, Plus, Filter, Search } from 'lucide-react';
 import AppointmentCalendar from '../components/appointments/AppointmentCalendar';
 import AppointmentForm from '../components/appointments/AppointmentForm';
@@ -8,6 +8,9 @@ const Appointments: React.FC = () => {
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [showForm, setShowForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0); // Used to force refresh of calendar
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searching, setSearching] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [stats, setStats] = useState({
     today: 0,
     thisWeek: 0,
@@ -18,7 +21,33 @@ const Appointments: React.FC = () => {
 
   useEffect(() => {
     fetchStats();
-  }, [refreshKey]); // Add refreshKey as dependency to refresh stats when it changes
+  }, [refreshKey]);
+
+  // Debounced search effect
+  useEffect(() => {
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Set new timeout
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchStats();
+      setSearching(false);
+    }, 300); // 300ms delay
+    
+    // Set searching state immediately
+    if (searchTerm) {
+      setSearching(true);
+    }
+    
+    // Cleanup timeout on unmount or when dependencies change
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchTerm]);
 
   const getWeekRange = () => {
     const today = new Date();
@@ -73,8 +102,9 @@ const Appointments: React.FC = () => {
         pending: pendingCount,
         completed: completedCount
       });
+      
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('Error fetching appointment stats:', error);
     } finally {
       setLoading(false);
     }
@@ -89,9 +119,13 @@ const Appointments: React.FC = () => {
   // Helper function to render stat values or loading placeholders
   const renderStatValue = (value: number) => {
     if (loading) {
-      return <span className="inline-block h-6 w-8 bg-gray-200 rounded animate-pulse"></span>;
+      return (
+        <span className="flex justify-center">
+          <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></span>
+        </span>
+      );
     }
-    return <span>{value}</span>;
+    return value;
   };
 
   return (
@@ -100,7 +134,7 @@ const Appointments: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
-          <p className="text-gray-600 mt-1">Manage patient appointments and scheduling</p>
+          <div className="text-gray-600 mt-1">Manage patient appointments and scheduling</div>
         </div>
         <div className="mt-4 sm:mt-0 flex items-center space-x-3">
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
@@ -142,28 +176,28 @@ const Appointments: React.FC = () => {
             <Calendar className="w-5 h-5 text-blue-500" />
             <p className="text-sm text-gray-500">Today</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.today)}</p>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.today)}</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="flex items-center space-x-2">
             <Clock className="w-5 h-5 text-orange-500" />
             <p className="text-sm text-gray-500">This Week</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.thisWeek)}</p>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.thisWeek)}</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="flex items-center space-x-2">
             <Filter className="w-5 h-5 text-green-500" />
             <p className="text-sm text-gray-500">Pending</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.pending)}</p>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.pending)}</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="flex items-center space-x-2">
             <Search className="w-5 h-5 text-purple-500" />
             <p className="text-sm text-gray-500">Completed</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.completed)}</p>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{renderStatValue(stats.completed)}</div>
         </div>
       </div>
 

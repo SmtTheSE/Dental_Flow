@@ -173,7 +173,7 @@ class TreatmentService {
   async getAllPatientTreatments(): Promise<PatientTreatment[]> {
     try {
       const response = await axios.get<PatientTreatment[]>(
-        `${API_BASE_URL}/api/patient-treatments`,
+        `${API_BASE_URL}/api/treatments/queue`,
         this.getAuthHeaders()
       );
       return response.data;

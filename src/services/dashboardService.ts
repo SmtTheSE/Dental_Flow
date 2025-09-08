@@ -18,10 +18,24 @@ export interface PatientStats {
 }
 
 class DashboardService {
+  // Helper method to get auth headers
+  private getAuthHeaders() {
+    const token = localStorage.getItem('dental_token');
+    return {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
   // Get dashboard statistics
   async getDashboardStats(): Promise<DashboardStats> {
     try {
-      const response = await axios.get<DashboardStats>(`${API_BASE_URL}/api/dashboard/stats`);
+      const response = await axios.get<DashboardStats>(
+        `${API_BASE_URL}/api/dashboard/stats`,
+        this.getAuthHeaders()
+      );
       return response.data;
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -32,7 +46,10 @@ class DashboardService {
   // Get patient statistics
   async getPatientStats(): Promise<PatientStats> {
     try {
-      const response = await axios.get<PatientStats>(`${API_BASE_URL}/api/patients/stats`);
+      const response = await axios.get<PatientStats>(
+        `${API_BASE_URL}/api/patients/stats`,
+        this.getAuthHeaders()
+      );
       return response.data;
     } catch (error) {
       console.error('Error fetching patient stats:', error);
