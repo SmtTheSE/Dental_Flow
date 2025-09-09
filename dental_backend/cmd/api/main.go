@@ -144,6 +144,9 @@ func setupRoutes(router *gin.Engine) {
 		api.POST("/patient-treatments", handlers.AuthMiddleware(), handlers.CreatePatientTreatment)
 		api.PUT("/patient-treatments/:id", handlers.AuthMiddleware(), handlers.UpdatePatientTreatment)
 		api.DELETE("/patient-treatments/:id", handlers.AuthMiddleware(), handlers.DeletePatientTreatment)
+		
+		// Tooth analysis endpoint
+		api.POST("/tooth-analysis", handlers.AuthMiddleware(), handlers.AnalyzeTooth)
 
 		// Billing endpoints
 		api.GET("/billing/stats", handlers.AuthMiddleware(), handlers.GetBillingStats)

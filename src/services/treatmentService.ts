@@ -66,6 +66,17 @@ export interface UpdatePatientTreatmentRequest {
   notes?: string;
 }
 
+export interface ToothAnalysisFinding {
+  id: number;
+  description: string;
+}
+
+export interface ToothAnalysisResult {
+  patientId: string;
+  findings: ToothAnalysisFinding[];
+  annotatedImageUrl: string;
+}
+
 class TreatmentService {
   // Helper method to get auth headers with validation
   private getAuthHeaders() {
@@ -79,6 +90,21 @@ class TreatmentService {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+      },
+    };
+  }
+
+  private getAuthHeadersWithMultipart() {
+    const token = localStorage.getItem('dental_token');
+
+    if (!token) {
+      throw new Error('No authentication token found. Please log in.');
+    }
+
+    return {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data',
       },
     };
   }
@@ -248,6 +274,26 @@ class TreatmentService {
       throw error;
     }
   }
+
+  async analyzeTooth(patientId: number, image: File): Promise<ToothAnalysisResult> {
+    try {
+      const formData = new FormData();
+      formData.append('patientId', patientId.toString());
+      formData.append('image', image);
+
+      const response = await axios.post<ToothAnalysisResult>(
+        `${API_BASE_URL}/api/tooth-analysis`,
+        formData,
+        this.getAuthHeadersWithMultipart()
+      );
+
+      return response.data;
+    } catch (error) {
+      this.handleApiError(error);
+      throw error;
+    }
+  }
 }
 
-export default new TreatmentService();
+const treatmentService = new TreatmentService();
+export { treatmentService as default, treatmentService, ToothAnalysisResult, ToothAnalysisFinding };

@@ -7,9 +7,28 @@ import (
 	"dental_backend/internal/services"
 	"net/http"
 	"strconv"
+	"os"
+	"bytes"
+	"io"
+	"mime/multipart"
+	"path/filepath"
+	"encoding/json"
 
 	"github.com/gin-gonic/gin"
 )
+
+// ToothAnalysisResponse represents the response structure for tooth analysis
+type ToothAnalysisResponse struct {
+	PatientID         string                      `json:"patientId"`
+	Findings          []ToothAnalysisFinding      `json:"findings"`
+	AnnotatedImageURL string                      `json:"annotatedImageUrl"`
+}
+
+// ToothAnalysisFinding represents a single finding from the tooth analysis
+type ToothAnalysisFinding struct {
+	ID          int    `json:"id"`
+	Description string `json:"description"`
+}
 
 // GetTreatments handles GET /api/treatments
 func GetTreatments(c *gin.Context) {
@@ -329,4 +348,127 @@ func DeletePatientTreatment(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Patient treatment deleted successfully"})
+}
+
+// AnalyzeTooth handles POST /api/tooth-analysis
+func AnalyzeTooth(c *gin.Context) {
+	// Parse form data
+	patientIDStr := c.PostForm("patientId")
+	patientID, err := strconv.Atoi(patientIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid patient ID"})
+		return
+	}
+
+	// Get the uploaded file
+	file, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Image file is required"})
+		return
+	}
+
+	// Validate file type (should be PNG or JPG)
+	if file.Header.Get("Content-Type") != "image/png" && 
+	   file.Header.Get("Content-Type") != "image/jpeg" &&
+	   file.Header.Get("Content-Type") != "image/jpg" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Only PNG and JPG images are supported"})
+		return
+	}
+
+	// Save file to temporary location
+	tempFile := filepath.Join(os.TempDir(), file.Filename)
+	if err := c.SaveUploadedFile(file, tempFile); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+		return
+	}
+	defer os.Remove(tempFile) // Clean up
+
+	// Forward to Python ML service
+	mlServiceURL := os.Getenv("ML_SERVICE_URL")
+	if mlServiceURL == "" {
+		mlServiceURL = "http://localhost:8000" // Default URL
+	}
+
+	// Create multipart form data to send to ML service
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	// Open the temporary file
+	fileReader, err := os.Open(tempFile)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image"})
+		return
+	}
+	defer fileReader.Close()
+
+	// Create form file field
+	part, err := writer.CreateFormFile("image", file.Filename)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create form file"})
+		return
+	}
+
+	// Copy file data to form
+	_, err = io.Copy(part, fileReader)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to copy file data"})
+		return
+	}
+
+	// Close writer to finalize multipart form
+	err = writer.Close()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create form data"})
+		return
+	}
+
+	// Send request to ML service
+	resp, err := http.Post(mlServiceURL+"/analyze", writer.FormDataContentType(), &buf)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to connect to ML service: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Add debug info to response headers
+	c.Header("X-ML-Service-Status", strconv.Itoa(resp.StatusCode))
+
+	// Check if the request was successful
+	if resp.StatusCode != http.StatusOK {
+		// Try to read the error response
+		respBody, _ := io.ReadAll(resp.Body)
+		c.JSON(resp.StatusCode, gin.H{"error": "ML service error: " + string(respBody)})
+		return
+	}
+
+	// Parse the response from ML service
+	var mlResponse struct {
+		Findings          []string `json:"findings"`
+		AnnotatedImageURL string   `json:"annotatedImageUrl"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&mlResponse); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse ML service response"})
+		return
+	}
+
+	// Add debug info to response headers
+	c.Header("X-ML-Response-Data", "received")
+
+	// Convert to our response format
+	var findings []ToothAnalysisFinding
+	for i, finding := range mlResponse.Findings {
+		findings = append(findings, ToothAnalysisFinding{
+			ID:          i + 1,
+			Description: finding,
+		})
+	}
+
+	response := ToothAnalysisResponse{
+		PatientID:         strconv.Itoa(patientID),
+		Findings:          findings,
+		AnnotatedImageURL: mlResponse.AnnotatedImageURL,
+	}
+
+	c.JSON(http.StatusOK, response)
 }

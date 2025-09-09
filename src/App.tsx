@@ -15,6 +15,7 @@ import Appointments from './pages/Appointments';
 import TreatmentPlanning from './pages/TreatmentPlanning';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
+import ToothAnalysis from './pages/ToothAnalysis';
 import { Patient } from './services/patientService';
 
 // Main App Layout Component
@@ -30,6 +31,7 @@ const AppLayout: React.FC = () => {
       '/patients': 'patients',
       '/appointments': 'appointments',
       '/treatment-planning': 'treatment-planning',
+      '/tooth-analysis': 'tooth-analysis',
       '/billing': 'billing',
       '/analytics': 'analytics'
     };
@@ -61,6 +63,7 @@ const AppLayout: React.FC = () => {
             <Route path="/patients/:id" element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
             <Route path="/appointments" element={<ProtectedRoute><Appointments /></ProtectedRoute>} />
             <Route path="/treatment-planning" element={<ProtectedRoute><TreatmentPlanning selectedPatient={selectedPatient} /></ProtectedRoute>} />
+            <Route path="/tooth-analysis" element={<ProtectedRoute><ToothAnalysis /></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/login" element={<Login />} />

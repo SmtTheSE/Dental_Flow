@@ -8,7 +8,8 @@ import {
   BarChart3,
   Stethoscope,
   Settings,
-  LogOut
+  LogOut,
+  Eye
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext'; // Add this import
@@ -27,6 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     { id: 'patients', icon: Users, label: 'Patients', path: '/patients' },
     { id: 'appointments', icon: Calendar, label: 'Appointments', path: '/appointments' },
     { id: 'treatment-planning', icon: Stethoscope, label: 'Treatment Planning', path: '/treatment-planning' },
+    { id: 'tooth-analysis', icon: Eye, label: 'Tooth Analysis', path: '/tooth-analysis' },
     { id: 'billing', icon: CreditCard, label: 'Billing & Insurance', path: '/billing' },
     { id: 'analytics', icon: BarChart3, label: 'Analytics', path: '/analytics' },
   ];

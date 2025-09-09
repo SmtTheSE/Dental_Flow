@@ -125,4 +125,5 @@ class PatientService {
   }
 }
 
-export default new PatientService();
+const patientService = new PatientService();
+export { patientService as default, patientService };
